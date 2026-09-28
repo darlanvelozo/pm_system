@@ -9,7 +9,7 @@ frontend/        Next.js, React, TypeScript, Tailwind, React Hook Form, Zod
 backend/         FastAPI, Pydantic, SQLAlchemy, Alembic, ReportLab
 docs/            Arquitetura, referências, homologação e operação
 .github/         CI com PostgreSQL e build do frontend
-render.yaml      Blueprint do backend e PostgreSQL
+render.yaml      Blueprint do backend; PostgreSQL externo gratuito no Neon
 docker-compose.yml  PostgreSQL para desenvolvimento
 ```
 
@@ -34,6 +34,14 @@ docker compose up -d postgres
 ```
 
 Defina `DATABASE_URL=postgresql+psycopg://bo:SENHA@localhost:5432/bo` no arquivo `backend/.env`. Faça o URL-encoding dos caracteres especiais da senha. O exemplo do ambiente é apenas local e deve ser substituído.
+
+## Banco online gratuito — Neon
+
+O deploy utiliza **Neon Free (PostgreSQL)**. O `render.yaml` não cria um banco pago no Render: solicita `DATABASE_URL` de um banco externo. Crie um projeto gratuito no Neon e copie sua URL de conexão direta, mantendo `sslmode=require` e os demais parâmetros TLS fornecidos pelo painel. Cadastre essa URL somente no backend, em **Render → Environment → DATABASE_URL**.
+
+O backend já aceita `postgresql://`, `postgres://` e `postgresql+psycopg://`, utiliza Psycopg 3 e verifica conexões ociosas com `pool_pre_ping`. As migrations Alembic, transações, relacionamentos e PDFs continuam funcionando com PostgreSQL. Não é necessário instalar MongoDB ou alterar as dependências.
+
+O plano gratuito tem limites de armazenamento e processamento; os PDFs também consomem o espaço do banco. Consulte o [guia de configuração, limites e migração](docs/free-database.md). Essa alteração torna o **banco** gratuito dentro da cota; não altera o plano do serviço web Render nem o provedor de e-mail.
 
 ## Backend — execução independente
 
@@ -123,7 +131,7 @@ Agende esse comando na infraestrutura conforme a operação. Sem um worker exter
 | Aplicação | Variável | Finalidade |
 |---|---|---|
 | Frontend | `NEXT_PUBLIC_API_URL` | URL pública da API |
-| Backend | `DATABASE_URL` | Conexão PostgreSQL; aceita URL do Render |
+| Backend | `DATABASE_URL` | Conexão PostgreSQL externa, como Neon Free, com TLS |
 | Backend | `JWT_SECRET` | Segredo aleatório, mínimo 32 caracteres |
 | Backend | `BATTALION_EMAIL` | Destino institucional definido no servidor |
 | Backend | `SMTP_HOST`, `SMTP_PORT` | Servidor e porta SMTP |
@@ -187,7 +195,7 @@ Consulte [validação](docs/validation.md) para resultados e limites da execuç�
 
 Vercel: importe o repositório, **Root Directory `frontend`**, framework Next.js. Configure `NEXT_PUBLIC_API_URL` com a URL HTTPS do Render e gere novo build.
 
-Render: Blueprint `render.yaml` cria backend e PostgreSQL. **Root Directory `backend`**. Build `pip install -r requirements.lock.txt`; pre-deploy `alembic upgrade head`; start `uvicorn app.main:app --host 0.0.0.0 --port $PORT --workers 1 --no-access-log`. Configure SMTP e `ALLOWED_ORIGINS` com a origem Vercel exata. O Blueprint utiliza planos pagos; confira-os antes de aplicar. Nenhum serviço de nuvem é provisionado automaticamente pelo código.
+Render: Blueprint `render.yaml` cria somente o backend, conectado ao PostgreSQL externo **Neon Free** pela variável `DATABASE_URL` preenchida no painel. **Root Directory `backend`**. Build `pip install -r requirements.lock.txt`; pre-deploy `alembic upgrade head`; start `uvicorn app.main:app --host 0.0.0.0 --port $PORT --workers 1 --no-access-log`. Configure SMTP e `ALLOWED_ORIGINS` com a origem Vercel exata. O serviço web permanece no plano pago Starter para suportar SMTP; não há banco Render provisionado por este Blueprint. Confira o plano do serviço antes de aplicar. Nenhum serviço de nuvem é provisionado automaticamente pelo código.
 
 Execute `python -m app.cli create-admin` no ambiente do backend. Faça smoke test com dados fictícios, confirme dois recebimentos reais em homologação e valide o PDF antes de uso institucional. Deploy é preparação de infraestrutura, não substitui homologação.
 

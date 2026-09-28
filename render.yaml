@@ -1,8 +1,5 @@
-databases:
-  - name: bo24-postgres
-    databaseName: bo24
-    user: bo24
-    plan: basic-256mb
+# PostgreSQL externo: crie um projeto Neon Free e informe sua URL com TLS.
+# Este Blueprint não cria nem cobra um banco de dados no Render.
 services:
   - type: web
     name: bo-online-24bpm-api
@@ -19,9 +16,7 @@ services:
       - key: ENVIRONMENT
         value: production
       - key: DATABASE_URL
-        fromDatabase:
-          name: bo24-postgres
-          property: connectionString
+        sync: false
       - key: JWT_SECRET
         generateValue: true
       - key: BATTALION_EMAIL

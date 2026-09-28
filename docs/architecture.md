@@ -2,6 +2,8 @@
 
 Monorepo: Next.js/React/TypeScript em frontend; FastAPI/Pydantic/SQLAlchemy/Alembic/ReportLab em backend. Comunicação exclusiva HTTP, PostgreSQL acessível somente pelo backend. UUID nas entidades; envolvidos e efetivo em relacionamentos. Número manual único, sem regra institucional inventada.
 
+Hospedagem do banco: Neon Free (PostgreSQL externo), configurado por `DATABASE_URL`. O Blueprint Render provisiona apenas o serviço web; não cria PostgreSQL pago. Ver [configuração e limites](free-database.md).
+
 ## Análise dos modelos oficiais
 
 Analisadas visualmente todas as quatro páginas dos dois PDFs locais fornecidos. Nenhum conteúdo pessoal foi incorporado à documentação ou aos testes. Ambos medem aproximadamente A4 (596 × 842 pontos), com grade preta fina, cabeçalhos cinza, bandeira à esquerda, identificação PMMA e emblema à direita. Dados de ocorrência e endereço antecedem os envolvidos.
