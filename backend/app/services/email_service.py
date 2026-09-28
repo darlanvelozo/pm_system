@@ -18,12 +18,14 @@ def send_bulletin_pdf(recipient, bulletin, pdf_bytes):
         return False
     message = EmailMessage()
     message['Subject'] = f'Boletim de Ocorrência - {bulletin.bo_number}'
-    message['From'] = cfg.gmail_from if cfg.email_provider == 'gmail_api' else cfg.smtp_from
+    message['From'] = {'gmail_api': cfg.gmail_from, 'brevo': cfg.brevo_from, 'smtp': cfg.smtp_from}[cfg.email_provider]
     message['To'] = recipient
     message.set_content(f'Prezados,\n\nSegue, em anexo, o Boletim de Ocorrência nº {bulletin.bo_number}, referente à ocorrência registrada em {bulletin.data["occurrence_date"]}.\n\nEste e-mail foi gerado automaticamente pelo Sistema BO Online 24º BPM.\n\nAtenciosamente,\n24º BPM')
     message.add_attachment(pdf_bytes, maintype='application', subtype='pdf', filename=filename(bulletin.bo_number))
     if cfg.email_provider == 'gmail_api':
         return send_gmail_message(cfg, message)
+    if cfg.email_provider == 'brevo':
+        return send_brevo_message(cfg, message)
     try:
         context = ssl.create_default_context()
         if cfg.smtp_ssl:
@@ -38,6 +40,31 @@ def send_bulletin_pdf(recipient, bulletin, pdf_bytes):
             server.send_message(message)
         return True
     except (OSError, smtplib.SMTPException, ValueError):
+        return False
+
+
+def send_brevo_message(cfg, message):
+    if not cfg.brevo_api_key or not cfg.brevo_from:
+        return False
+    payload = {
+        'sender': {'email': cfg.brevo_from, 'name': cfg.brevo_from_name},
+        'to': [{'email': str(message['To'])}],
+        'subject': str(message['Subject']),
+        'textContent': message.get_body(preferencelist=('plain',)).get_content(),
+        'attachment': [{'name': part.get_filename(),
+                        'content': base64.b64encode(part.get_payload(decode=True)).decode('ascii')}
+                       for part in message.iter_attachments()],
+    }
+    if cfg.brevo_reply_to:
+        payload['replyTo'] = {'email': cfg.brevo_reply_to}
+    try:
+        with httpx.Client(timeout=20) as client:
+            response = client.post('https://api.brevo.com/v3/smtp/email',
+                                   headers={'api-key': cfg.brevo_api_key}, json=payload)
+            response.raise_for_status()
+            result = response.json()
+            return isinstance(result, dict) and isinstance(result.get('messageId'), str) and bool(result['messageId'])
+    except (httpx.HTTPError, ValueError):
         return False
 
 

@@ -9,7 +9,11 @@ class Settings(BaseSettings):
     database_url: str
     jwt_secret: str
     battalion_email: EmailStr = 'boletimonline24bpm@gmail.com'
-    email_provider: Literal['smtp', 'gmail_api'] = 'smtp'
+    email_provider: Literal['smtp', 'gmail_api', 'brevo'] = 'smtp'
+    brevo_api_key: str = ''
+    brevo_from: str = ''
+    brevo_from_name: str = '24º BPM — BoletimON'
+    brevo_reply_to: str = '24bpmcoroata2@gmail.com'
     gmail_client_id: str = ''
     gmail_client_secret: str = ''
     gmail_refresh_token: str = ''

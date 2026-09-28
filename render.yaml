@@ -23,12 +23,10 @@ services:
       - key: ALLOWED_ORIGINS
         sync: false
       - key: EMAIL_PROVIDER
-        value: gmail_api
-      - key: GMAIL_FROM
-        value: boletimonline24bpm@gmail.com
-      - key: GMAIL_CLIENT_ID
+        value: brevo
+      - key: BREVO_FROM
         sync: false
-      - key: GMAIL_CLIENT_SECRET
-        sync: false
-      - key: GMAIL_REFRESH_TOKEN
+      - key: BREVO_REPLY_TO
+        value: 24bpmcoroata2@gmail.com
+      - key: BREVO_API_KEY
         sync: false

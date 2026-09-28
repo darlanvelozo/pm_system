@@ -1,3 +1,7 @@
+# Envio no Render Free
+
+A configura??o recomendada agora usa Brevo via HTTPS, sem OAuth Google. Siga [o guia Brevo](docs/brevo.md). Gmail e SMTP continuam opcionais.
+
 # BO Online 24º BPM
 
 Sistema de Emissão de Boletins de Ocorrência do 24º BPM da Polícia Militar do Maranhão. Frontend Next.js e backend FastAPI **independentes**, com comunicação HTTP/HTTPS, PostgreSQL, autenticação, PDF e entrega por SMTP ou API do Gmail.
@@ -195,7 +199,7 @@ Consulte [validação](docs/validation.md) para resultados e limites da execuç�
 
 Vercel: importe o repositório, **Root Directory `frontend`**, framework Next.js. Configure `NEXT_PUBLIC_API_URL` com a URL HTTPS do Render e gere novo build.
 
-Render: o Blueprint `render.yaml` usa o plano **Free**, PostgreSQL externo Neon e envio HTTPS pela API do Gmail. Root Directory: `backend`. Build: `pip install -r requirements.lock.txt`. Start: `alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port $PORT --workers 1 --no-access-log`. Configure OAuth e as variaveis conforme [Gmail no Render Free](docs/gmail-api.md). Para servicos existentes, ajuste tambem o plano e os comandos no painel. O envio real depende da autorizacao da conta remetente.
+Render: o Blueprint `render.yaml` usa o plano **Free**, PostgreSQL externo Neon e envio HTTPS pela API do Brevo. Root Directory: `backend`. Build: `pip install -r requirements.lock.txt`. Start: `alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port $PORT --workers 1 --no-access-log`. Configure o remetente e a chave de API conforme [Brevo no Render Free](docs/brevo.md). Para servicos existentes, ajuste tambem o plano e os comandos no painel. O envio real depende da autorizacao da conta remetente.
 
 Execute `python -m app.cli create-admin` no ambiente do backend. Faça smoke test com dados fictícios, confirme dois recebimentos reais em homologação e valide o PDF antes de uso institucional. Deploy é preparação de infraestrutura, não substitui homologação.
 
