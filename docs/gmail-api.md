@@ -1,5 +1,19 @@
 # Gmail no Render Free
 
+## Branding do BoletimON
+
+Após o deploy do frontend, configure no Google Auth Platform → Branding:
+
+- Nome: `BoletimON` (BO Online 24º BPM).
+- Página inicial: `https://bpm24online.vercel.app/sobre`.
+- Política de Privacidade: `https://bpm24online.vercel.app/privacidade`.
+- Termos de Uso: `https://bpm24online.vercel.app/termos`.
+- Contato de suporte: `24bpmcoroata2@gmail.com`.
+
+Essas páginas são públicas e também estão vinculadas na tela de entrada. Confirme que o deploy está concluído e revise o conteúdo com o responsável pelo sistema antes de submeter o branding. Publicar o app não equivale a obter verificação do Google. Se solicitado, comprove a propriedade do endereço no Search Console e siga os requisitos de domínio apresentados no painel.
+
+A conta usada na autorização OAuth deve corresponder ao remetente. Se autorizar `24bpmcoroata2@gmail.com`, adicione essa conta como testadora e use `GMAIL_FROM=24bpmcoroata2@gmail.com`. O endereço `BATTALION_EMAIL` é o destinatário da cópia, independente do remetente.
+
 O backend suporta `EMAIL_PROVIDER=gmail_api`: envia o mesmo PDF por HTTPS pela API oficial do Gmail, com autorização OAuth da conta remetente. SMTP continua disponível para outros ambientes. Nenhum teste envia mensagens reais.
 
 ## Autorizar a conta do batalhão
