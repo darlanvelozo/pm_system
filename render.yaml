@@ -18,6 +18,10 @@ services:
         sync: false
       - key: JWT_SECRET
         generateValue: true
+      - key: SINGLE_USER_MODE
+        value: true
+      - key: SINGLE_USER_PASSWORD
+        sync: false
       - key: BATTALION_EMAIL
         value: boletimonline24bpm@gmail.com
       - key: ALLOWED_ORIGINS

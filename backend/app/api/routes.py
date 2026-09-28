@@ -14,6 +14,7 @@ from app.services.audit import audit
 from app.services.bulletins import deliver, emit
 from app.services.email_service import filename
 from app.services.storage import DatabaseStorage
+from app.core.config import settings
 
 router = APIRouter(prefix='/api')
 
@@ -35,7 +36,7 @@ def login(data: Login, db: Session = Depends(get_db)):
     identity = str(data.username or data.email).strip().lower()
     user = db.scalar(select(User).where((User.username == identity) | (User.email == identity)))
     valid = verify(data.password, user.password_hash if user else dummy_hash)
-    if not user or not valid or not user.active:
+    if not user or not valid or not user.active or (settings().single_user_mode and user.username != '24bpmcoroata'):
         raise HTTPException(401, 'Usuário ou senha inválidos')
     audit(db, user.id, 'USER_LOGIN')
     save(db)
@@ -137,6 +138,8 @@ def users(page: int = Query(1, ge=1), user=Depends(admin), db: Session = Depends
 
 @router.post('/admin/users', status_code=201)
 def create_user(data: UserCreate, user=Depends(admin), db: Session = Depends(get_db)):
+    if settings().single_user_mode:
+        raise HTTPException(403, 'Cadastro desativado: acesso por conta única.')
     new = User(username=data.username or str(data.email).lower(), email=str(data.email).lower() if data.email else None, name=data.name, password_hash=hasher.hash(data.password), role=data.role)
     db.add(new)
     audit(db, user.id, 'USER_CREATED')
@@ -146,6 +149,8 @@ def create_user(data: UserCreate, user=Depends(admin), db: Session = Depends(get
 
 @router.patch('/admin/users/{user_id}')
 def update_user(user_id: uuid.UUID, data: UserUpdate, user=Depends(admin), db: Session = Depends(get_db)):
+    if settings().single_user_mode:
+        raise HTTPException(403, 'Gerencie a senha da conta única nas variáveis do backend.')
     target = db.get(User, user_id)
     if not target:
         raise HTTPException(404, 'Usuário não encontrado')

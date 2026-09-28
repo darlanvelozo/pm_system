@@ -2,6 +2,7 @@ import os
 import tempfile
 from pathlib import Path
 import pytest
+os.environ['SINGLE_USER_MODE'] = 'false'
 
 os.environ['DATABASE_URL'] = os.environ.get('TEST_DATABASE_URL', 'sqlite:///' + str(Path(tempfile.gettempdir()) / 'bo24-tests.sqlite').replace('\\', '/'))
 os.environ.setdefault('JWT_SECRET', 'test-only-secret-not-for-production-1234567890')

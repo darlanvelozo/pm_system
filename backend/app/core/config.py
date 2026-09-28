@@ -1,6 +1,6 @@
 from functools import lru_cache
 from typing import Literal
-from pydantic import EmailStr, field_validator
+from pydantic import EmailStr, SecretStr, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -8,6 +8,8 @@ class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file='.env', extra='ignore')
     database_url: str
     jwt_secret: str
+    single_user_mode: bool = True
+    single_user_password: SecretStr = SecretStr('')
     battalion_email: EmailStr = 'boletimonline24bpm@gmail.com'
     email_provider: Literal['smtp', 'gmail_api', 'brevo'] = 'smtp'
     brevo_api_key: str = ''

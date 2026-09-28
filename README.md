@@ -1,3 +1,5 @@
+Conta de acesso atual: `24bpmcoroata`, criada automaticamente na inicializacao. Configure `SINGLE_USER_MODE=true` e o segredo `SINGLE_USER_PASSWORD` no Render. Nao e necessario executar create-admin. Veja [conta unica](docs/login.md).
+
 # Envio no Render Free
 
 A configura??o recomendada agora usa Brevo via HTTPS, sem OAuth Google. Siga [o guia Brevo](docs/brevo.md). Gmail e SMTP continuam opcionais.

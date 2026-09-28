@@ -35,6 +35,8 @@ def current_user(credentials: HTTPAuthorizationCredentials = Depends(bearer), db
         user = db.get(User, uuid.UUID(claims['sub']))
         if not user or not user.active:
             raise ValueError()
+        if settings().single_user_mode and user.username != '24bpmcoroata':
+            raise ValueError()
         return user
     except (jwt.PyJWTError, ValueError, TypeError):
         raise HTTPException(401, 'Sessão inválida ou expirada', headers={'WWW-Authenticate': 'Bearer'}) from None

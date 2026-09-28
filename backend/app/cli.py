@@ -6,6 +6,7 @@ from app.db.session import SessionLocal
 from app.models.entities import Bulletin, User
 from app.schemas.user import UserCreate
 from app.services.bulletins import deliver
+from app.core.config import settings
 
 
 def main():
@@ -13,6 +14,8 @@ def main():
     parser.add_argument('command', choices=['create-admin', 'retry-pending'])
     args = parser.parse_args()
     if args.command == 'create-admin':
+        if settings().single_user_mode:
+            raise SystemExit('A conta 24bpmcoroata é criada na inicialização. Configure SINGLE_USER_PASSWORD.')
         username = input('Usuario do administrador: ').strip().lower()
         name = input('Nome: ').strip()
         password = getpass('Senha (mínimo 12 caracteres): ')

@@ -1,4 +1,6 @@
 from fastapi import FastAPI, Request
+from contextlib import asynccontextmanager
+from app.services.default_user import ensure_default_user
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
@@ -7,7 +9,14 @@ from app.core.config import settings
 from app.core.middleware import SecurityMiddleware
 
 cfg = settings()
-app = FastAPI(title='BO Online 24º BPM', docs_url='/docs' if cfg.environment != 'production' else None, redoc_url=None)
+
+@asynccontextmanager
+async def lifespan(app):
+    ensure_default_user()
+    yield
+
+
+app = FastAPI(title='BO Online 24º BPM', lifespan=lifespan, docs_url='/docs' if cfg.environment != 'production' else None, redoc_url=None)
 app.add_middleware(SecurityMiddleware)
 app.add_middleware(CORSMiddleware, allow_origins=cfg.origins, allow_methods=['GET', 'POST', 'PUT', 'PATCH', 'OPTIONS'], allow_headers=['Authorization', 'Content-Type'], expose_headers=['Content-Disposition'])
 app.include_router(router)
