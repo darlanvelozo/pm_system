@@ -13,16 +13,16 @@ def main():
     parser.add_argument('command', choices=['create-admin', 'retry-pending'])
     args = parser.parse_args()
     if args.command == 'create-admin':
-        email = input('E-mail do administrador: ').strip()
+        username = input('Usuario do administrador: ').strip().lower()
         name = input('Nome: ').strip()
         password = getpass('Senha (mínimo 12 caracteres): ')
         if password != getpass('Confirme a senha: '):
             raise SystemExit('Senhas diferentes')
-        data = UserCreate(email=email, name=name, password=password, role='ADMIN')
+        data = UserCreate(username=username, name=name, password=password, role='ADMIN')
         with SessionLocal() as db:
-            if db.scalar(select(User).where(User.email == str(data.email).lower())):
+            if db.scalar(select(User).where(User.username == data.username)):
                 raise SystemExit('E-mail já cadastrado')
-            db.add(User(email=str(data.email).lower(), name=data.name, password_hash=hasher.hash(data.password), role='ADMIN'))
+            db.add(User(username=data.username, email=None, name=data.name, password_hash=hasher.hash(data.password), role='ADMIN'))
             db.commit()
         print('Administrador criado.')
     else:

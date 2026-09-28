@@ -12,7 +12,8 @@ def now():
 class User(Base):
     __tablename__ = 'users'
     id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
-    email: Mapped[str] = mapped_column(String(254), unique=True)
+    username: Mapped[str | None] = mapped_column(String(254), unique=True)
+    email: Mapped[str | None] = mapped_column(String(254), unique=True)
     name: Mapped[str] = mapped_column(String(150))
     password_hash: Mapped[str] = mapped_column(String(255))
     role: Mapped[str] = mapped_column(String(20), default='OPERADOR')

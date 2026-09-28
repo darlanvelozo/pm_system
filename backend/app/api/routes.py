@@ -27,15 +27,16 @@ def save(db):
 
 
 def user_view(u):
-    return {'id': str(u.id), 'email': u.email, 'name': u.name, 'role': u.role, 'active': u.active}
+    return {'id': str(u.id), 'email': u.email, 'username': u.username or u.email, 'name': u.name, 'role': u.role, 'active': u.active}
 
 
 @router.post('/auth/login')
 def login(data: Login, db: Session = Depends(get_db)):
-    user = db.scalar(select(User).where(User.email == str(data.email).lower()))
+    identity = str(data.username or data.email).strip().lower()
+    user = db.scalar(select(User).where((User.username == identity) | (User.email == identity)))
     valid = verify(data.password, user.password_hash if user else dummy_hash)
     if not user or not valid or not user.active:
-        raise HTTPException(401, 'E-mail ou senha inválidos')
+        raise HTTPException(401, 'Usuário ou senha inválidos')
     audit(db, user.id, 'USER_LOGIN')
     save(db)
     return {'access_token': token_for(user), 'token_type': 'bearer', 'user': user_view(user)}
@@ -131,12 +132,12 @@ def resend(bulletin_id: uuid.UUID, data: ResendInput, tasks: BackgroundTasks, us
 
 @router.get('/admin/users')
 def users(page: int = Query(1, ge=1), user=Depends(admin), db: Session = Depends(get_db)):
-    return [user_view(u) for u in db.scalars(select(User).order_by(User.email).offset((page-1)*50).limit(50))]
+    return [user_view(u) for u in db.scalars(select(User).order_by(User.username).offset((page-1)*50).limit(50))]
 
 
 @router.post('/admin/users', status_code=201)
 def create_user(data: UserCreate, user=Depends(admin), db: Session = Depends(get_db)):
-    new = User(email=str(data.email).lower(), name=data.name, password_hash=hasher.hash(data.password), role=data.role)
+    new = User(username=data.username or str(data.email).lower(), email=str(data.email).lower() if data.email else None, name=data.name, password_hash=hasher.hash(data.password), role=data.role)
     db.add(new)
     audit(db, user.id, 'USER_CREATED')
     save(db)

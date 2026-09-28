@@ -1,6 +1,6 @@
 # Gmail no Render Free
 
-Este guia descreve a alternativa Gmail. O Blueprint agora utiliza Brevo, sem OAuth; siga [o guia Brevo](brevo.md) para a configura??o atual.
+Este guia descreve a alternativa Gmail. O Blueprint agora utiliza Brevo, sem OAuth; siga [o guia Brevo](brevo.md) para a configuração atual.
 
 ## Branding do BoletimON
 
