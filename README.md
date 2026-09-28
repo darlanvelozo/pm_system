@@ -1,6 +1,6 @@
 # BO Online 24º BPM
 
-Sistema de Emissão de Boletins de Ocorrência do 24º BPM da Polícia Militar do Maranhão. Frontend Next.js e backend FastAPI **independentes**, com comunicação HTTP/HTTPS, PostgreSQL, autenticação, PDF e entrega por SMTP.
+Sistema de Emissão de Boletins de Ocorrência do 24º BPM da Polícia Militar do Maranhão. Frontend Next.js e backend FastAPI **independentes**, com comunicação HTTP/HTTPS, PostgreSQL, autenticação, PDF e entrega por SMTP ou API do Gmail.
 
 ## Estrutura
 
@@ -20,7 +20,7 @@ Os modelos BO 02 e BO 04 têm schemas e interfaces próprios, baseados em perfis
 - Node.js 24 LTS e npm.
 - Python 3.12 e PostgreSQL 17.
 - Git para versionamento.
-- Servidor SMTP com TLS para entrega real.
+- Credenciais OAuth do Gmail para Render Free, ou servidor SMTP com TLS em hospedagem compativel. Veja [o guia](docs/gmail-api.md).
 
 Ferramentas portáteis eventualmente usadas no desenvolvimento ficam em `.tools/`, ignorado pelo Git. Não são necessárias no deploy.
 
@@ -195,7 +195,7 @@ Consulte [validação](docs/validation.md) para resultados e limites da execuç�
 
 Vercel: importe o repositório, **Root Directory `frontend`**, framework Next.js. Configure `NEXT_PUBLIC_API_URL` com a URL HTTPS do Render e gere novo build.
 
-Render: Blueprint `render.yaml` cria somente o backend, conectado ao PostgreSQL externo **Neon Free** pela variável `DATABASE_URL` preenchida no painel. **Root Directory `backend`**. Build `pip install -r requirements.lock.txt`; pre-deploy `alembic upgrade head`; start `uvicorn app.main:app --host 0.0.0.0 --port $PORT --workers 1 --no-access-log`. Configure SMTP e `ALLOWED_ORIGINS` com a origem Vercel exata. O serviço web permanece no plano pago Starter para suportar SMTP; não há banco Render provisionado por este Blueprint. Confira o plano do serviço antes de aplicar. Nenhum serviço de nuvem é provisionado automaticamente pelo código.
+Render: o Blueprint `render.yaml` usa o plano **Free**, PostgreSQL externo Neon e envio HTTPS pela API do Gmail. Root Directory: `backend`. Build: `pip install -r requirements.lock.txt`. Start: `alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port $PORT --workers 1 --no-access-log`. Configure OAuth e as variaveis conforme [Gmail no Render Free](docs/gmail-api.md). Para servicos existentes, ajuste tambem o plano e os comandos no painel. O envio real depende da autorizacao da conta remetente.
 
 Execute `python -m app.cli create-admin` no ambiente do backend. Faça smoke test com dados fictícios, confirme dois recebimentos reais em homologação e valide o PDF antes de uso institucional. Deploy é preparação de infraestrutura, não substitui homologação.
 

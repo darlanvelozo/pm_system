@@ -1,4 +1,5 @@
 from functools import lru_cache
+from typing import Literal
 from pydantic import EmailStr, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
@@ -8,6 +9,11 @@ class Settings(BaseSettings):
     database_url: str
     jwt_secret: str
     battalion_email: EmailStr = 'boletimonline24bpm@gmail.com'
+    email_provider: Literal['smtp', 'gmail_api'] = 'smtp'
+    gmail_client_id: str = ''
+    gmail_client_secret: str = ''
+    gmail_refresh_token: str = ''
+    gmail_from: str = 'boletimonline24bpm@gmail.com'
     smtp_host: str = ''
     smtp_port: int = 587
     smtp_username: str = ''

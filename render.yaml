@@ -6,10 +6,9 @@ services:
     runtime: python
     rootDir: backend
     buildCommand: pip install -r requirements.lock.txt
-    preDeployCommand: alembic upgrade head
-    startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT --workers 1 --no-access-log
+    startCommand: alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port $PORT --workers 1 --no-access-log
     healthCheckPath: /health
-    plan: starter
+    plan: free
     envVars:
       - key: PYTHON_VERSION
         value: 3.12.14
@@ -23,13 +22,13 @@ services:
         value: boletimonline24bpm@gmail.com
       - key: ALLOWED_ORIGINS
         sync: false
-      - key: SMTP_HOST
+      - key: EMAIL_PROVIDER
+        value: gmail_api
+      - key: GMAIL_FROM
+        value: boletimonline24bpm@gmail.com
+      - key: GMAIL_CLIENT_ID
         sync: false
-      - key: SMTP_PORT
-        value: 587
-      - key: SMTP_USERNAME
+      - key: GMAIL_CLIENT_SECRET
         sync: false
-      - key: SMTP_PASSWORD
-        sync: false
-      - key: SMTP_FROM
+      - key: GMAIL_REFRESH_TOKEN
         sync: false

@@ -46,8 +46,4 @@ O Neon Free não é um teste temporário, mas está sujeito às cotas: a documen
 
 Os PDFs ficam em `pdf_files` dentro do PostgreSQL e competem com boletins, índices e auditoria pelo espaço. Monitore armazenamento no painel e estabeleça backup externo testado. Não há um número fixo garantido de boletins: o tamanho do PDF depende do conteúdo. Não remova documentos para liberar espaço sem uma regra institucional de retenção.
 
-O **banco** fica gratuito dentro dessas cotas. O serviço web Render continua no plano Starter: a implementação envia e-mail por SMTP, e [serviços gratuitos do Render bloqueiam as portas 25, 465 e 587](https://render.com/docs/free#other-limitations). Uma hospedagem inteiramente gratuita exigiria também revisar envio de e-mail e execução das migrations; isso não foi alterado neste ajuste.
-
-## O que foi validado
-
-Removido o provisionamento de PostgreSQL pago no Blueprint; `DATABASE_URL` é entrada externa. A aplicação mantém o mesmo driver, schema e migrations já testados com PostgreSQL. A conexão real com uma conta Neon depende da criação do projeto e da configuração da URL no Render; não há credencial Neon disponível neste ambiente.
+O banco e o backend podem usar os planos gratuitos dentro de suas cotas. O Blueprint usa Render Free com migrations na inicializacao e API do Gmail via HTTPS. Configure a autorizacao OAuth conforme [Gmail no Render Free](gmail-api.md); SMTP nao funciona nesse plano.
