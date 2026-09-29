@@ -11,8 +11,8 @@ export async function api<T>(path: string, token?: string, init: RequestInit = {
   }
   return response.json() as Promise<T>;
 }
-export async function downloadPdf(id: string, token: string) {
-  const response = await fetch(`${base}/api/bo/${id}/pdf`, { headers: { Authorization: `Bearer ${token}` }, cache: 'no-store' });
+export async function downloadPdf(id: string, token: string, version?: number) {
+  const response = await fetch(`${base}/api/bo/${id}/${version ? `revisions/${version}/pdf` : 'pdf'}`, { headers: { Authorization: `Bearer ${token}` }, cache: 'no-store' });
   if (!response.ok) throw new ApiError('Não foi possível baixar o PDF.', response.status);
   const url = URL.createObjectURL(await response.blob());
   const link = document.createElement('a'); link.href = url; link.download = `BO_${id}.pdf`; link.click();
