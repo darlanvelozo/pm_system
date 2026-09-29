@@ -1,3 +1,4 @@
+import uuid
 import copy
 from io import BytesIO
 import pytest
@@ -15,7 +16,7 @@ def test_dynamic_pdf(client, accounts, payload, count):
     payload['bulletin_type'] = 'DYNAMIC'
     payload['people'] = [{'name': f'Pessoa Ficticia {i:02d}', 'extras': {'clothing': f'Roupa teste {i:02d}'}} for i in range(count)]
     h = accounts['operator']['headers']
-    r = client.post('/api/bo', headers=h, json={'data': payload, 'emit': True})
+    r = client.post('/api/bo', headers={**h, 'Idempotency-Key': str(uuid.uuid4())}, json={'data': payload, 'emit': True})
     assert r.status_code == 201, r.text
     record = r.json()
     assert len(record['data']['people']) == count
@@ -33,7 +34,7 @@ def test_revision_growth_shrink_and_soft_removal(client, accounts, payload, monk
     monkeypatch.setattr('app.services.bulletins.send_bulletin_pdf', lambda *args: calls.append(args) or True)
     op, admin = accounts['operator']['headers'], accounts['admin']['headers']
     payload['people'] = [{'name': 'Original A'}, {'name': 'Original B'}]
-    r = client.post('/api/bo', headers=op, json={'data': payload, 'emit': True}).json()
+    r = client.post('/api/bo', headers={**op, 'Idempotency-Key': str(uuid.uuid4())}, json={'data': payload, 'emit': True}).json()
     path = '/api/bo/' + r['id']
     old_pdf = client.get(path + '/pdf', headers=admin).content
     r = client.get(path, headers=admin).json()
@@ -76,7 +77,7 @@ def test_partial_draft_and_conflict(client, accounts, payload):
     assert r.status_code == 201, r.text
     r = r.json()
     url = '/api/bo/' + r['id']
-    assert client.put(url, headers=h, json={'data': payload, 'version': r['version'], 'emit': True}).status_code == 422
+    assert client.put(url, headers={**h, 'Idempotency-Key': str(uuid.uuid4())}, json={'data': payload, 'version': r['version'], 'emit': True}).status_code == 422
     payload['history'] = 'Edição em outro dispositivo'
     assert client.put(url, headers=h, json={'data': payload, 'version': r['version'], 'emit': False}).status_code == 200
     assert client.put(url, headers=h, json={'data': payload, 'version': r['version'], 'emit': False}).status_code == 409
@@ -85,7 +86,7 @@ def test_partial_draft_and_conflict(client, accounts, payload):
 def test_eight_to_three_preserves_identity_and_previous_pdf(client, accounts, payload):
     headers = accounts['admin']['headers']
     payload['people'] = [{'name': f'Fictional person {i}'} for i in range(8)]
-    created = client.post('/api/bo', headers=headers, json={'data': payload, 'emit': True}).json()
+    created = client.post('/api/bo', headers={**headers, 'Idempotency-Key': str(uuid.uuid4())}, json={'data': payload, 'emit': True}).json()
     path = '/api/bo/' + created['id']
     current = client.get(path, headers=headers).json()
     old = client.get(path + '/pdf', headers=headers).content

@@ -18,7 +18,7 @@ async def lifespan(app):
 
 app = FastAPI(title='BO Online 24º BPM', lifespan=lifespan, docs_url='/docs' if cfg.environment != 'production' else None, redoc_url=None)
 app.add_middleware(SecurityMiddleware)
-app.add_middleware(CORSMiddleware, allow_origins=cfg.origins, allow_methods=['GET', 'POST', 'PUT', 'PATCH', 'OPTIONS'], allow_headers=['Authorization', 'Content-Type'], expose_headers=['Content-Disposition'])
+app.add_middleware(CORSMiddleware, allow_origins=cfg.origins, allow_methods=['GET', 'POST', 'PUT', 'PATCH', 'OPTIONS'], allow_headers=['Authorization', 'Content-Type', 'Idempotency-Key'], expose_headers=['Content-Disposition'])
 app.include_router(router)
 
 

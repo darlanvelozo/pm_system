@@ -1,5 +1,5 @@
 import uuid
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, Response
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, Response, Header
 from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
@@ -8,7 +8,11 @@ from app.auth.security import admin, current_user, dummy_hash, hasher, token_for
 from app.db.session import get_db
 from app.models.entities import AuditLog, Bulletin, BulletinRevision, User
 from app.repositories.bulletins import accessible, assign, present
-from app.schemas.bulletin import CreateBulletin, ResendInput, UpdateBulletin, RevisionInput
+from app.schemas.bulletin import CreateBulletin, ResendInput, UpdateBulletin, RevisionInput, BulletinInput
+from app.services.protocol import emission_retry
+from app.pdf.generator import generate_pdf
+import hashlib
+from datetime import date
 from app.schemas.user import Login, UserCreate, UserUpdate
 from app.services.audit import audit
 from app.services.bulletins import deliver, emit
@@ -63,7 +67,7 @@ def revise(bulletin_id: uuid.UUID, data: RevisionInput, user=Depends(admin), db:
         raise HTTPException(409, 'Somente boletins emitidos podem receber revisão')
     if b.version != data.version:
         raise HTTPException(409, 'Boletim alterado em outro dispositivo. Atualize antes de continuar.')
-    if data.data.bo_number != b.bo_number:
+    if data.data.bo_number and data.data.bo_number != b.bo_number:
         raise HTTPException(422, 'A revisão deve preservar o número do BO')
     b.edited_by, b.edited_at, b.edit_reason = user.id, now(), data.reason
     b.lifecycle = {**(b.lifecycle or {}), 'edited_by_name': user.name, 'edited_by_username': user.username or user.email}
@@ -82,7 +86,7 @@ def revisions(bulletin_id: uuid.UUID, user=Depends(admin), db: Session = Depends
     accessible(db, bulletin_id, user)
     return [{'version': r.version, 'created_at': r.created_at, 'actor_name': r.actor_name_snapshot,
              'actor_username': r.actor_username_snapshot, 'reason': r.reason,
-             'involved_count': r.involved_count, 'pdf_layout_version': r.pdf_layout_version}
+             'involved_count': r.involved_count, 'pdf_layout_version': r.pdf_layout_version, 'pdf_sha256': r.pdf_sha256}
             for r in db.scalars(select(BulletinRevision).where(BulletinRevision.bulletin_id == bulletin_id).order_by(BulletinRevision.version.desc()))]
 
 
@@ -128,12 +132,17 @@ def me(user=Depends(current_user)):
 
 
 @router.post('/bo', status_code=201)
-def create(data: CreateBulletin, tasks: BackgroundTasks, user=Depends(current_user), db: Session = Depends(get_db)):
+def create(data: CreateBulletin, tasks: BackgroundTasks, user=Depends(current_user), db: Session = Depends(get_db), idempotency_key: uuid.UUID | None = Header(None)):
+    if data.emit:
+        previous = emission_retry(db, idempotency_key, user)
+        if previous:
+            return present(previous)
     bulletin = Bulletin(id=uuid.uuid4(), created_by=user.id)
     assign(db, bulletin, data.data)
     db.add(bulletin)
     audit(db, user.id, 'BO_CREATED', bulletin.id)
     if data.emit:
+        bulletin.emission_key = idempotency_key
         emit(db, bulletin, data.data, user.id)
     save(db)
     if data.emit:
@@ -142,7 +151,7 @@ def create(data: CreateBulletin, tasks: BackgroundTasks, user=Depends(current_us
 
 
 @router.get('/bo')
-def listing(page: int = Query(1, ge=1), size: int = Query(20, ge=1, le=100), status: str | None = None, search: str = Query('', max_length=100), user=Depends(current_user), db: Session = Depends(get_db)):
+def listing(page: int = Query(1, ge=1), size: int = Query(20, ge=1, le=100), status: str | None = None, search: str = Query('', max_length=100), q: str = Query('', max_length=100), date_from: date | None = None, date_to: date | None = None, occurrence_type: str = Query('', max_length=200), city: str = Query('', max_length=100), created_by: uuid.UUID | None = None, revision: int | None = Query(None, ge=0), user=Depends(current_user), db: Session = Depends(get_db)):
     query = select(Bulletin).join(User, Bulletin.created_by == User.id)
     if status:
         if status not in ('DRAFT', 'ISSUED', 'CANCELLED', 'REMOVED'):
@@ -150,9 +159,16 @@ def listing(page: int = Query(1, ge=1), size: int = Query(20, ge=1, le=100), sta
         query = query.where(Bulletin.status == status)
     else:
         query = query.where(Bulletin.status != 'REMOVED')
-    if search:
-        pattern = '%' + search + '%'
-        query = query.where(Bulletin.bo_number.ilike(pattern) | Bulletin.data['occurrence_type'].as_string().ilike(pattern) | User.name.ilike(pattern) | User.username.ilike(pattern) | Bulletin.registered_by_name_snapshot.ilike(pattern) | Bulletin.registered_by_username_snapshot.ilike(pattern))
+    if search or q:
+        pattern = '%' + (q or search) + '%'
+        query = query.where(Bulletin.bo_number.ilike(pattern) | Bulletin.data['occurrence_type'].as_string().ilike(pattern) | Bulletin.data['occurrence_summary'].as_string().ilike(pattern) | User.name.ilike(pattern) | User.username.ilike(pattern) | Bulletin.registered_by_name_snapshot.ilike(pattern) | Bulletin.registered_by_username_snapshot.ilike(pattern))
+    query = filter_bulletins(query, date_from, date_to, occurrence_type)
+    if city:
+        query = query.where(Bulletin.data['location']['city'].as_string().ilike('%' + city + '%'))
+    if created_by:
+        query = query.where(Bulletin.created_by == created_by)
+    if revision is not None:
+        query = query.where(Bulletin.current_revision == revision)
     if user.role != 'ADMIN':
         query = query.where(Bulletin.created_by == user.id, Bulletin.status != 'REMOVED')
     total = db.scalar(select(func.count()).select_from(query.subquery()))
@@ -162,8 +178,47 @@ def listing(page: int = Query(1, ge=1), size: int = Query(20, ge=1, le=100), sta
         'id': str(b.id), 'bo_number': b.bo_number, 'bulletin_type': b.bulletin_type,
         'created_by': str(b.created_by), 'created_by_name': b.registered_by_name_snapshot or b.creator.name, 'created_by_username': b.registered_by_username_snapshot or b.creator.username or b.creator.email, 'status': b.status, 'occurrence_type': b.data['occurrence_type'],
         'occurrence_date': b.data['occurrence_date'], 'pdf_generated_at': b.pdf_generated_at,
+        'occurrence_summary': b.data.get('occurrence_summary', ''), 'city': b.data.get('location', {}).get('city', ''),
+        'current_revision': b.current_revision, 'updated_at': b.updated_at, 'involved_count': len(b.people),
+        'draft_step': b.data.get('draft_step', 0),
         'battalion_email_status': b.battalion_email_status, 'recipient_email_status': b.recipient_email_status,
     } for b in rows]}
+
+
+def filter_bulletins(query, date_from=None, date_to=None, occurrence_type=''):
+    if date_from and date_to and date_from > date_to:
+        raise HTTPException(422, 'Período inválido.')
+    if date_from:
+        query = query.where(Bulletin.data['occurrence_date'].as_string() >= date_from.isoformat())
+    if date_to:
+        query = query.where(Bulletin.data['occurrence_date'].as_string() <= date_to.isoformat())
+    if occurrence_type:
+        query = query.where(Bulletin.data['occurrence_type'].as_string().ilike('%' + occurrence_type + '%'))
+    return query
+
+
+@router.get('/operational-options')
+def operational_options(user=Depends(current_user), db: Session = Depends(get_db)):
+    owned = select(Bulletin).where(Bulletin.created_by == user.id, Bulletin.status != 'REMOVED')
+    last = db.scalar(owned.order_by(Bulletin.updated_at.desc()).limit(1))
+    types = db.scalars(select(Bulletin.data['occurrence_type'].as_string()).where(Bulletin.created_by == user.id, Bulletin.status != 'REMOVED').distinct().limit(100)).all()
+    return {'occurrence_types': sorted(t for t in types if t), 'team': [t.data for t in last.team] if last else [],
+            'delivery': last.data.get('delivery', {}) if last else {}}
+
+
+@router.get('/admin/stats')
+def statistics(date_from: date | None = None, date_to: date | None = None, status: str | None = None,
+               occurrence_type: str = Query('', max_length=200), user=Depends(admin), db: Session = Depends(get_db)):
+    query = filter_bulletins(select(Bulletin), date_from, date_to, occurrence_type)
+    if status:
+        if status not in ('DRAFT', 'ISSUED', 'CANCELLED', 'REMOVED'):
+            raise HTTPException(422, 'Status inválido.')
+        query = query.where(Bulletin.status == status)
+    rows = query.subquery()
+    counts = dict(db.execute(select(rows.c.status, func.count()).group_by(rows.c.status)).all())
+    types = db.execute(select(rows.c.data['occurrence_type'].as_string().label('type'), func.count().label('count')).group_by('type').order_by(func.count().desc()).limit(10)).mappings().all()
+    return {'total': sum(counts.values()), 'statuses': counts, 'revised': db.scalar(select(func.count()).select_from(rows).where(rows.c.current_revision > 1)),
+            'email_failed': db.scalar(select(func.count()).select_from(rows).where((rows.c.recipient_email_status == 'FAILED') | (rows.c.battalion_email_status == 'FAILED'))), 'types': types}
 
 
 @router.get('/bo/{bulletin_id}')
@@ -172,7 +227,11 @@ def detail(bulletin_id: uuid.UUID, user=Depends(current_user), db: Session = Dep
 
 
 @router.put('/bo/{bulletin_id}')
-def update(bulletin_id: uuid.UUID, data: UpdateBulletin, tasks: BackgroundTasks, user=Depends(current_user), db: Session = Depends(get_db)):
+def update(bulletin_id: uuid.UUID, data: UpdateBulletin, tasks: BackgroundTasks, user=Depends(current_user), db: Session = Depends(get_db), idempotency_key: uuid.UUID | None = Header(None)):
+    if data.emit:
+        previous = emission_retry(db, idempotency_key, user, bulletin_id)
+        if previous:
+            return present(previous)
     b = accessible(db, bulletin_id, user, lock=True)
     if b.status != 'DRAFT':
         raise HTTPException(409, 'Boletim emitido não pode ser alterado')
@@ -181,6 +240,7 @@ def update(bulletin_id: uuid.UUID, data: UpdateBulletin, tasks: BackgroundTasks,
     assign(db, b, data.data)
     audit(db, user.id, 'BO_UPDATED', b.id)
     if data.emit:
+        b.emission_key = idempotency_key
         emit(db, b, data.data, user.id)
     save(db)
     if data.emit:
@@ -200,6 +260,51 @@ def download(bulletin_id: uuid.UUID, user=Depends(current_user), db: Session = D
     audit(db, user.id, 'PDF_DOWNLOADED', b.id)
     save(db)
     return Response(content, media_type='application/pdf', headers={'Content-Disposition': f'attachment; filename="{filename(b.bo_number)}"', 'Cache-Control': 'no-store'})
+
+
+class EmitInput(BaseModel):
+    version: int = Field(ge=1)
+
+
+@router.post('/bo/{bulletin_id}/emit')
+def issue(bulletin_id: uuid.UUID, data: EmitInput, tasks: BackgroundTasks,
+          idempotency_key: uuid.UUID = Header(), user=Depends(current_user), db: Session = Depends(get_db)):
+    previous = emission_retry(db, idempotency_key, user, bulletin_id)
+    if previous:
+        return present(previous)
+    b = accessible(db, bulletin_id, user, lock=True)
+    if b.status != 'DRAFT':
+        raise HTTPException(409, 'Este boletim já foi emitido ou encerrado.')
+    if b.version != data.version:
+        raise HTTPException(409, 'Este rascunho foi alterado em outro dispositivo.')
+    from pydantic import ValidationError
+    try:
+        validated = BulletinInput.model_validate(present(b)['data'])
+    except ValidationError:
+        raise HTTPException(422, 'Complete os campos obrigatórios antes de emitir.') from None
+    b.emission_key = idempotency_key
+    emit(db, b, validated, user.id)
+    save(db)
+    tasks.add_task(deliver, b.id, user.id)
+    return present(b)
+
+
+@router.post('/bo/preview-pdf')
+def preview(data: BulletinInput, user=Depends(current_user)):
+    content = generate_pdf(data, registered_by=f'{user.name} ({user.username or user.email})', preview=True)
+    return Response(content, media_type='application/pdf', headers={'Content-Disposition': 'inline; filename="previa.pdf"', 'Cache-Control': 'no-store'})
+
+
+@router.get('/bo/{bulletin_id}/verify')
+def verify_document(bulletin_id: uuid.UUID, revision: int = Query(ge=1), user=Depends(current_user), db: Session = Depends(get_db)):
+    b = accessible(db, bulletin_id, user)
+    r = db.scalar(select(BulletinRevision).where(BulletinRevision.bulletin_id == b.id, BulletinRevision.version == revision))
+    if not r:
+        raise HTTPException(404, 'Versão não encontrada.')
+    digest = hashlib.sha256(DatabaseStorage(db).get(r.pdf_storage_key)).hexdigest()
+    return {'bo_number': b.bo_number, 'version': r.version, 'status': b.status,
+            'generated_at': r.created_at, 'pdf_sha256': r.pdf_sha256, 'matches': digest == r.pdf_sha256,
+            'current_revision': b.current_revision}
 
 
 @router.post('/bo/{bulletin_id}/resend-email', status_code=202)

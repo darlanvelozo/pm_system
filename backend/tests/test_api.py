@@ -1,3 +1,4 @@
+import uuid
 import copy
 from io import BytesIO
 from unittest.mock import MagicMock
@@ -11,7 +12,7 @@ from app.pdf.generator import generate_pdf
 
 
 def create(client, accounts, payload, emit=True):
-    return client.post('/api/bo', headers=accounts['operator']['headers'], json={'data': payload, 'emit': emit})
+    return client.post('/api/bo', headers={**accounts['operator']['headers'], 'Idempotency-Key': str(uuid.uuid4())}, json={'data': payload, 'emit': emit})
 
 
 def test_health_login_and_protected_routes(client, accounts):
@@ -88,7 +89,7 @@ def test_validation_profiles_and_no_sensitive_echo(client, accounts, payload):
     assert create(client, accounts, bad).status_code == 422
     payload['people'][0]['extras'] = {'clothing': 'Vestuário fictício', 'firearm': {'selected': True, 'type': 'Teste'}}
     assert create(client, accounts, payload).status_code == 201
-    assert create(client, accounts, payload).status_code == 409
+    assert create(client, accounts, payload).status_code == 201  # independent emission gets another automatic protocol
 
 
 def test_draft_update_issue_and_immutability(client, accounts, payload):
@@ -100,8 +101,8 @@ def test_draft_update_issue_and_immutability(client, accounts, payload):
     payload['history'] = 'Histórico atualizado de teste.'
     updated = client.put(f'/api/bo/{bid}', headers=headers, json={'data':payload,'version':r['version'],'emit':False})
     assert updated.status_code == 200, updated.text
-    assert client.put(f'/api/bo/{bid}', headers=headers, json={'data':payload,'version':r['version'],'emit':True}).status_code == 409
-    issued = client.put(f'/api/bo/{bid}', headers=headers, json={'data':payload,'version':updated.json()['version'],'emit':True})
+    assert client.put(f'/api/bo/{bid}', headers={**headers, 'Idempotency-Key': str(uuid.uuid4())}, json={'data':payload,'version':r['version'],'emit':True}).status_code == 409
+    issued = client.put(f'/api/bo/{bid}', headers={**headers, 'Idempotency-Key': str(uuid.uuid4())}, json={'data':payload,'version':updated.json()['version'],'emit':True})
     assert issued.status_code == 200
     assert client.put(f'/api/bo/{bid}', headers=headers, json={'data':payload,'version':issued.json()['version'],'emit':False}).status_code == 409
 
@@ -150,12 +151,12 @@ def test_email_service_mocked_smtp(payload, monkeypatch):
     monkeypatch.setattr(cfg, 'smtp_from', 'sender@example.com')
     mock = MagicMock()
     monkeypatch.setattr('app.services.email_service.smtplib.SMTP', mock)
-    b = SimpleNamespace(bo_number='TEST/001', data=payload)
+    b = SimpleNamespace(bo_number='TEST/001', data=payload, current_revision=1, people=[], registered_by_name_snapshot='Test Operator', registered_by_username_snapshot='test.operator')
     assert send_bulletin_pdf('recipient@example.com', b, b'%PDF-fictional')
     smtp = mock.return_value.__enter__.return_value
     smtp.starttls.assert_called_once()
     message = smtp.send_message.call_args.args[0]
     assert message['To'] == 'recipient@example.com' and message['Cc'] is None
-    assert next(message.iter_attachments()).get_filename() == 'BO_TEST_001.pdf'
+    assert next(message.iter_attachments()).get_filename() == 'BO_TEST_001_OCORRENCIA_FICTICIA_v1.pdf'
     mock.side_effect = OSError('Fictional SMTP failure')
     assert not send_bulletin_pdf('recipient@example.com', b, b'%PDF-fictional')

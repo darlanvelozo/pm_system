@@ -38,7 +38,8 @@ class Bulletin(Base):
     edited_by: Mapped[uuid.UUID | None] = mapped_column(ForeignKey('users.id'))
     edit_reason: Mapped[str | None] = mapped_column(String(500))
     current_revision: Mapped[int] = mapped_column(Integer, default=0)
-    bo_number: Mapped[str] = mapped_column(String(100), unique=True)
+    bo_number: Mapped[str | None] = mapped_column(String(100), unique=True)
+    emission_key: Mapped[uuid.UUID | None] = mapped_column(Uuid, unique=True)
     bulletin_type: Mapped[str] = mapped_column(String(20))
     recipient_email: Mapped[str] = mapped_column(String(254))
     status: Mapped[str] = mapped_column(String(20), default='DRAFT')
@@ -93,8 +94,15 @@ class BulletinRevision(Base):
     reason: Mapped[str] = mapped_column(String(500))
     pdf_storage_key: Mapped[str] = mapped_column(String(100))
     pdf_layout_version: Mapped[str] = mapped_column(String(30))
+    pdf_sha256: Mapped[str | None] = mapped_column(String(64))
     involved_count: Mapped[int] = mapped_column(Integer)
     data: Mapped[dict] = mapped_column(JSON)
+
+
+class BulletinSequence(Base):
+    __tablename__ = 'bulletin_sequences'
+    date_key: Mapped[str] = mapped_column(String(8), primary_key=True)
+    last_number: Mapped[int] = mapped_column(Integer, nullable=False)
 
 
 class AuditLog(Base):

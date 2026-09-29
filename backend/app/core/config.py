@@ -30,6 +30,7 @@ class Settings(BaseSettings):
     environment: str = 'development'
     token_minutes: int = 30
     pdf_asset_dir: str = 'app/pdf/assets'
+    frontend_url: str = 'https://bpm24online.vercel.app'
 
     @field_validator('jwt_secret')
     @classmethod

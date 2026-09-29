@@ -1,4 +1,5 @@
 from sqlalchemy import select
+import hashlib
 from app.core.config import settings
 from app.db.session import SessionLocal
 from app.models.entities import Bulletin, BulletinRevision, User, now
@@ -7,23 +8,28 @@ from app.pdf.layout import PDF_LAYOUT_VERSION
 from app.services.audit import audit
 from app.services.email_service import send_bulletin_pdf
 from app.services.storage import DatabaseStorage
+from app.services.protocol import next_protocol
 
 
 def emit(db, bulletin, data, user_id, reason='Emissão inicial'):
+    if not bulletin.bo_number:
+        bulletin.bo_number = next_protocol(db)
+    data = data.model_copy(update={'bo_number': bulletin.bo_number})
+    bulletin.data = {**bulletin.data, 'bo_number': bulletin.bo_number}
     creator = db.get(User, bulletin.created_by)
     actor = db.get(User, user_id)
     if not bulletin.registered_by_name_snapshot:
         bulletin.registered_by_name_snapshot = creator.name
         bulletin.registered_by_username_snapshot = creator.username or creator.email
-    content = generate_pdf(data, registered_by=f'{bulletin.registered_by_name_snapshot} ({bulletin.registered_by_username_snapshot})')
     version = (bulletin.current_revision or 0) + 1
+    content = generate_pdf(data, registered_by=f'{bulletin.registered_by_name_snapshot} ({bulletin.registered_by_username_snapshot})', version=version, bulletin_id=bulletin.id)
     key = f'{bulletin.id}/v{version}.pdf'
     DatabaseStorage(db).put(key, content)
     snapshot = data.model_dump(mode='json')
     snapshot['people'] = [{**p.data, 'id': str(p.id)} for p in bulletin.people]
     db.add(BulletinRevision(bulletin_id=bulletin.id, version=version, created_by=user_id,
         actor_name_snapshot=actor.name, actor_username_snapshot=actor.username or actor.email,
-        reason=reason, pdf_storage_key=key, pdf_layout_version=PDF_LAYOUT_VERSION,
+        reason=reason, pdf_storage_key=key, pdf_layout_version=PDF_LAYOUT_VERSION, pdf_sha256=hashlib.sha256(content).hexdigest(),
         involved_count=len(data.people), data=snapshot))
     bulletin.current_revision = version
     bulletin.pdf_storage_key = key

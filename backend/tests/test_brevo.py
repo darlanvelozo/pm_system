@@ -28,7 +28,7 @@ def test_brevo_transport(monkeypatch, payload, failure):
         assert body['sender']['email'] == 'sender@example.com'
         assert body['replyTo']['email'] == 'reply@example.com'
         assert 'cc' not in body and 'bcc' not in body
-        assert body['attachment'][0]['name'] == 'BO_TEST_001.pdf'
+        assert body['attachment'][0]['name'] == 'BO_TEST_001_OCORRENCIA_FICTICIA_v1.pdf'
         assert base64.b64decode(body['attachment'][0]['content']) == b'%PDF-fictional'
         assert 'TEST/001' in body['textContent']
         if failure == 'timeout':
@@ -40,6 +40,6 @@ def test_brevo_transport(monkeypatch, payload, failure):
 
     client = httpx.Client(transport=httpx.MockTransport(handler))
     monkeypatch.setattr(email_service.httpx, 'Client', lambda **kwargs: client)
-    bulletin = SimpleNamespace(bo_number='TEST/001', data=payload)
+    bulletin = SimpleNamespace(bo_number='TEST/001', data=payload, current_revision=1, people=[], registered_by_name_snapshot='Test Operator', registered_by_username_snapshot='test.operator')
     assert email_service.send_bulletin_pdf('recipient@example.com', bulletin, b'%PDF-fictional') is (failure is None)
     assert len(calls) == (0 if failure == 'missing_config' else 1)

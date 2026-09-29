@@ -135,7 +135,9 @@ class BulletinInput(FormModel):
 
     bulletin_type: BulletinType = BulletinType.DYNAMIC
     recipient_email: EmailStr
-    bo_number: str = Field(min_length=1, max_length=100, pattern=r'^[^\r\n]+$')
+    bo_number: str | None = Field(default=None, max_length=100)
+    occurrence_summary: str = Field(default='', max_length=80)
+    draft_step: int = Field(default=0, ge=0, le=7)
     dispatch_number: str = ''
     occurrence_type: str = Field(min_length=1, max_length=200)
     occurrence_date: Date

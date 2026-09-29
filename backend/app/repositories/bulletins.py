@@ -18,7 +18,7 @@ def accessible(db, bulletin_id, user, lock=False):
 
 def assign(db, bulletin, data):
     payload = data.model_dump(mode='json')
-    bulletin.bo_number = data.bo_number
+    payload['bo_number'] = bulletin.bo_number
     bulletin.bulletin_type = data.bulletin_type.value
     bulletin.recipient_email = str(data.recipient_email)
     people = payload.pop('people')
@@ -59,7 +59,7 @@ def present(b):
         'cancellation_reason': b.cancellation_reason,
         'bulletin_type': b.bulletin_type, 'recipient_email': b.recipient_email,
         'status': b.status, 'version': b.version,
-        'data': {**b.data, 'people': [{**p.data, 'id': str(p.id)} for p in b.people], 'team': [t.data for t in b.team]},
+        'data': {**b.data, 'bo_number': b.bo_number, 'people': [{**p.data, 'id': str(p.id)} for p in b.people], 'team': [t.data for t in b.team]},
         'pdf_generated_at': b.pdf_generated_at, 'recipient_email_status': b.recipient_email_status,
         'battalion_email_status': b.battalion_email_status,
         'recipient_email_sent_at': b.recipient_email_sent_at, 'battalion_email_sent_at': b.battalion_email_sent_at,

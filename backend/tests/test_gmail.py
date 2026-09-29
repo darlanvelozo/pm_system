@@ -38,13 +38,13 @@ def test_gmail_transport(monkeypatch, payload, failure):
         assert message['Cc'] is None
         attachment = next(message.iter_attachments())
         assert attachment.get_payload(decode=True) == b'%PDF-fictional'
-        assert attachment.get_filename() == 'BO_TEST_001.pdf'
+        assert attachment.get_filename() == 'BO_TEST_001_OCORRENCIA_FICTICIA_v1.pdf'
         return httpx.Response(403 if failure == 'send' else 200,
                               json={} if failure == 'missing_id' else {'id': 'test-message'})
 
     client = httpx.Client(transport=httpx.MockTransport(handler))
     monkeypatch.setattr(email_service.httpx, 'Client', lambda **kwargs: client)
-    bulletin = SimpleNamespace(bo_number='TEST/001', data=payload)
+    bulletin = SimpleNamespace(bo_number='TEST/001', data=payload, current_revision=1, people=[], registered_by_name_snapshot='Test Operator', registered_by_username_snapshot='test.operator')
     assert email_service.send_bulletin_pdf('recipient@example.com', bulletin, b'%PDF-fictional') is (failure is None)
     if failure == 'missing_config':
         assert not calls

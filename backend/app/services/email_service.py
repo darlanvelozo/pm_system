@@ -5,6 +5,7 @@ import smtplib
 import ssl
 from email.message import EmailMessage
 from app.core.config import settings
+from app.services.email_summary import email_summary
 
 
 def filename(number):
@@ -17,11 +18,12 @@ def send_bulletin_pdf(recipient, bulletin, pdf_bytes):
     if cfg.email_provider == 'smtp' and (not cfg.smtp_host or not cfg.smtp_from):
         return False
     message = EmailMessage()
-    message['Subject'] = f'Boletim de Ocorrência - {bulletin.bo_number}'
+    subject, body, attachment = email_summary(bulletin)
+    message['Subject'] = subject
     message['From'] = {'gmail_api': cfg.gmail_from, 'brevo': cfg.brevo_from, 'smtp': cfg.smtp_from}[cfg.email_provider]
     message['To'] = recipient
-    message.set_content(f'Prezados,\n\nSegue, em anexo, o Boletim de Ocorrência nº {bulletin.bo_number}, referente à ocorrência registrada em {bulletin.data["occurrence_date"]}.\n\nEste e-mail foi gerado automaticamente pelo Sistema BO Online 24º BPM.\n\nAtenciosamente,\n24º BPM')
-    message.add_attachment(pdf_bytes, maintype='application', subtype='pdf', filename=filename(bulletin.bo_number))
+    message.set_content(body)
+    message.add_attachment(pdf_bytes, maintype='application', subtype='pdf', filename=attachment)
     if cfg.email_provider == 'gmail_api':
         return send_gmail_message(cfg, message)
     if cfg.email_provider == 'brevo':
