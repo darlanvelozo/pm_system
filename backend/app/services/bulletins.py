@@ -1,7 +1,7 @@
 from sqlalchemy import select
 from app.core.config import settings
 from app.db.session import SessionLocal
-from app.models.entities import Bulletin, now
+from app.models.entities import Bulletin, User, now
 from app.pdf.generator import generate_pdf
 from app.services.audit import audit
 from app.services.email_service import send_bulletin_pdf
@@ -9,7 +9,8 @@ from app.services.storage import DatabaseStorage
 
 
 def emit(db, bulletin, data, user_id):
-    content = generate_pdf(data)
+    creator = db.get(User, bulletin.created_by)
+    content = generate_pdf(data, registered_by=f'{creator.name} ({creator.username or creator.email})')
     key = f'{bulletin.id}.pdf'
     DatabaseStorage(db).put(key, content)
     bulletin.pdf_storage_key = key

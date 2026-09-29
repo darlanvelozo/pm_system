@@ -1,21 +1,11 @@
-# Conta única (configuração atual)
+# Administrador e usuarios
 
-O usuário padrão é `24bpmcoroata`. No Render, configure `SINGLE_USER_MODE=true` e `SINGLE_USER_PASSWORD` com a senha desejada (10 a 128 caracteres), depois faça redeploy. A conta é criada automaticamente após as migrations. Se já existir, sua senha é sincronizada com essa variável. Não coloque a senha no código ou no Git.
+O administrador inicial continua sendo `24bpmcoroata`. Mantenha `SINGLE_USER_MODE=true` e `SINGLE_USER_PASSWORD` no Render: por compatibilidade, essas variaveis agora controlam somente a criacao automatica desse administrador; nao bloqueiam outras contas.
 
-Não há cadastro no modo de conta única. Contas antigas e boletins são preservados, mas apenas `24bpmcoroata` pode acessar. A auditoria registra essa conta compartilhada, sem distinguir pessoas. O e-mail padrão do Render é independente do login. A API exige a senha configurada para iniciar.
+Em **Administracao > Usuarios**, o administrador cadastra nome, usuario, senha inicial (minimo 12 caracteres) e perfil. Operadores consultam seus proprios boletins; administradores consultam todos. O administrador pode ativar ou desativar outras contas. O login aceita o usuario cadastrado e nao exige e-mail.
 
-## Modo anterior (somente com SINGLE_USER_MODE=false)
+Em cada boletim, **Registrado por** mostra o nome e o usuario responsavel. Novos PDFs incluem essa identificacao no rodape. PDFs antigos permanecem como foram emitidos; seus autores continuam identificados no sistema.
 
-O acesso aceita um nome de usuário, como `24bpmcoroata`, sem exigir e-mail. Novos nomes usam de 3 a 64 caracteres: letras, números, ponto, hífen ou sublinhado. Maiúsculas e minúsculas são equivalentes. Contas anteriores continuam aceitando o e-mail como identificador.
+Nos detalhes, o administrador pode **Cancelar boletim**, informando o motivo e confirmando. Isso funciona para rascunhos e emitidos. O registro, PDF armazenado e auditoria sao preservados; edicao, download e reenvio ficam bloqueados. Cancelamento nao recolhe e-mails ja entregues. Nao ha exclusao definitiva nem reutilizacao do numero do boletim.
 
-O e-mail padrão de envio e recebimento é independente das contas de acesso. As variáveis configuradas no Render não são alteradas pelo cadastro de usuários.
-
-O deploy deve executar `alembic upgrade head` antes de iniciar o backend, para adicionar o campo username e preservar os cadastros existentes.
-
-Para cadastrar o primeiro administrador, configure localmente o backend para o banco utilizado pelo Render e execute dentro de backend:
-
-```powershell
-.\.venv\Scripts\python.exe -m app.cli create-admin
-```
-
-Informe o usuário, nome e uma senha de pelo menos 12 caracteres. A senha é solicitada sem exibição. Nenhuma conta ou senha padrão é criada pela migration. Outros usuários podem ser cadastrados no painel administrativo.
+Faca deploy do backend e frontend. O Start Command existente executa a migration antes de iniciar o servidor. As variaveis de e-mail permanecem independentes das contas de acesso.

@@ -24,6 +24,10 @@ class Bulletin(Base):
     __tablename__ = 'bulletins'
     id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
     created_by: Mapped[uuid.UUID] = mapped_column(ForeignKey('users.id'), index=True)
+    creator: Mapped['User'] = relationship(foreign_keys=[created_by], lazy='selectin')
+    cancelled_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    cancelled_by: Mapped[uuid.UUID | None] = mapped_column(ForeignKey('users.id'))
+    cancellation_reason: Mapped[str | None] = mapped_column(String(500))
     bo_number: Mapped[str] = mapped_column(String(100), unique=True)
     bulletin_type: Mapped[str] = mapped_column(String(20))
     recipient_email: Mapped[str] = mapped_column(String(254))

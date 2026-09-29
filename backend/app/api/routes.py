@@ -14,9 +14,31 @@ from app.services.audit import audit
 from app.services.bulletins import deliver, emit
 from app.services.email_service import filename
 from app.services.storage import DatabaseStorage
-from app.core.config import settings
+from pydantic import BaseModel, Field
+from app.models.entities import now
 
 router = APIRouter(prefix='/api')
+
+
+class CancelInput(BaseModel):
+    reason: str = Field(min_length=3, max_length=500)
+
+
+@router.post('/bo/{bulletin_id}/cancel')
+def cancel(bulletin_id: uuid.UUID, data: CancelInput, user=Depends(admin), db: Session = Depends(get_db)):
+    b = accessible(db, bulletin_id, user, lock=True)
+    if b.status == 'CANCELLED':
+        raise HTTPException(409, 'Boletim já cancelado')
+    reason = data.reason.strip()
+    if len(reason) < 3:
+        raise HTTPException(422, 'Informe o motivo do cancelamento')
+    b.status = 'CANCELLED'
+    b.cancelled_at = now()
+    b.cancelled_by = user.id
+    b.cancellation_reason = reason
+    audit(db, user.id, 'BO_CANCELLED', b.id)
+    save(db)
+    return present(b)
 
 
 def save(db):
@@ -36,7 +58,7 @@ def login(data: Login, db: Session = Depends(get_db)):
     identity = str(data.username or data.email).strip().lower()
     user = db.scalar(select(User).where((User.username == identity) | (User.email == identity)))
     valid = verify(data.password, user.password_hash if user else dummy_hash)
-    if not user or not valid or not user.active or (settings().single_user_mode and user.username != '24bpmcoroata'):
+    if not user or not valid or not user.active:
         raise HTTPException(401, 'Usuário ou senha inválidos')
     audit(db, user.id, 'USER_LOGIN')
     save(db)
@@ -72,7 +94,7 @@ def listing(page: int = Query(1, ge=1), size: int = Query(20, ge=1, le=100), use
     # List endpoint intentionally omits personal data and narrative.
     return {'total': total, 'page': page, 'size': size, 'items': [{
         'id': str(b.id), 'bo_number': b.bo_number, 'bulletin_type': b.bulletin_type,
-        'created_by': str(b.created_by), 'status': b.status, 'occurrence_type': b.data['occurrence_type'],
+        'created_by': str(b.created_by), 'created_by_name': b.creator.name, 'created_by_username': b.creator.username or b.creator.email, 'status': b.status, 'occurrence_type': b.data['occurrence_type'],
         'occurrence_date': b.data['occurrence_date'], 'pdf_generated_at': b.pdf_generated_at,
         'battalion_email_status': b.battalion_email_status, 'recipient_email_status': b.recipient_email_status,
     } for b in rows]}
@@ -138,8 +160,6 @@ def users(page: int = Query(1, ge=1), user=Depends(admin), db: Session = Depends
 
 @router.post('/admin/users', status_code=201)
 def create_user(data: UserCreate, user=Depends(admin), db: Session = Depends(get_db)):
-    if settings().single_user_mode:
-        raise HTTPException(403, 'Cadastro desativado: acesso por conta única.')
     new = User(username=data.username or str(data.email).lower(), email=str(data.email).lower() if data.email else None, name=data.name, password_hash=hasher.hash(data.password), role=data.role)
     db.add(new)
     audit(db, user.id, 'USER_CREATED')
@@ -149,8 +169,6 @@ def create_user(data: UserCreate, user=Depends(admin), db: Session = Depends(get
 
 @router.patch('/admin/users/{user_id}')
 def update_user(user_id: uuid.UUID, data: UserUpdate, user=Depends(admin), db: Session = Depends(get_db)):
-    if settings().single_user_mode:
-        raise HTTPException(403, 'Gerencie a senha da conta única nas variáveis do backend.')
     target = db.get(User, user_id)
     if not target:
         raise HTTPException(404, 'Usuário não encontrado')

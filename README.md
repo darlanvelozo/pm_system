@@ -1,4 +1,4 @@
-Conta de acesso atual: `24bpmcoroata`, criada automaticamente na inicializacao. Configure `SINGLE_USER_MODE=true` e o segredo `SINGLE_USER_PASSWORD` no Render. Nao e necessario executar create-admin. Veja [conta unica](docs/login.md).
+Administrador inicial: `24bpmcoroata`, criada automaticamente na inicializacao. Configure `SINGLE_USER_MODE=true` e o segredo `SINGLE_USER_PASSWORD` no Render. Nao e necessario executar create-admin. Veja [usuarios e cancelamento](docs/login.md).
 
 # Envio no Render Free
 

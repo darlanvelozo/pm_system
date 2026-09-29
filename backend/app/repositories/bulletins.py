@@ -35,6 +35,9 @@ def assign(bulletin, data):
 def present(b):
     return {
         'id': str(b.id), 'created_by': str(b.created_by), 'bo_number': b.bo_number,
+        'created_by_name': b.creator.name, 'created_by_username': b.creator.username or b.creator.email,
+        'cancelled_at': b.cancelled_at, 'cancelled_by': str(b.cancelled_by) if b.cancelled_by else None,
+        'cancellation_reason': b.cancellation_reason,
         'bulletin_type': b.bulletin_type, 'recipient_email': b.recipient_email,
         'status': b.status, 'version': b.version,
         'data': {**b.data, 'people': [p.data for p in b.people], 'team': [t.data for t in b.team]},
