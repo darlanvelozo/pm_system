@@ -1,0 +1,10 @@
+'use client';
+import {useEffect,useState} from 'react';
+import {api} from '@/services/api';
+type StatsData = {total:number; statuses:Record<string,number>; revised:number; email_failed:number; types:{type:string;count:number}[]};
+export function Stats({token}: {token:string}) {
+  const [filters,setFilters] = useState({date_from:'',date_to:'',status:'',occurrence_type:''});
+  const [data,setData] = useState<StatsData>(); const [error,setError] = useState('');
+  useEffect(()=>{let active=true; const query = new URLSearchParams(Object.entries(filters).filter(([,v])=>v)); api<StatsData>(`/api/admin/stats?${query}`,token).then(v=>{if(active){setData(v);setError('');}}).catch(e=>{if(active)setError(e.message);});return()=>{active=false;};},[filters,token]);
+  return <div><h1>Relatório administrativo</h1><div className="form-grid">{(['date_from','date_to','occurrence_type'] as const).map(key=><label className="field" key={key}>{({date_from:'Data inicial',date_to:'Data final',occurrence_type:'Tipo de ocorrência'})[key]}<input type={key.startsWith('date')?'date':'text'} value={filters[key]} onChange={e=>setFilters({...filters,[key]:e.target.value})}/></label>)}<label className="field">Status<select value={filters.status} onChange={e=>setFilters({...filters,status:e.target.value})}><option value="">Todos</option>{['DRAFT','ISSUED','CANCELLED','REMOVED'].map(s=><option key={s} value={s}>{({DRAFT:'Rascunhos',ISSUED:'Emitidos',CANCELLED:'Cancelados',REMOVED:'Removidos'} as Record<string,string>)[s]}</option>)}</select></label></div>{error && <p role="alert">{error}</p>}{data && <div className="card"><p>Total: {data.total}</p>{Object.entries({Rascunhos:data.statuses.DRAFT||0,Emitidos:data.statuses.ISSUED||0,Cancelados:data.statuses.CANCELLED||0,Removidos:data.statuses.REMOVED||0,Revisados:data.revised,'Falhas de e-mail':data.email_failed}).map(([label,count])=><p key={label}>{label}: {count}</p>)}<h2>Tipos mais registrados</h2>{data.types.map(t=><p key={t.type}>{t.type || 'Não informado'}: {t.count}</p>)}</div>}</div>;
+}

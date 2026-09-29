@@ -1,6 +1,7 @@
 'use client';
 import { useEffect, useState } from 'react';
-import { api, downloadPdf } from '@/services/api';
+import {PdfPreview} from '@/components/PdfPreview';
+import { api, downloadPdf, pdfUrl } from '@/services/api';
 import { Modal } from '@/components/Modal';
 import type { Bulletin, EmailStatus, User } from '@/types/api';
 import { ReviewStep } from './ReviewStep';
@@ -10,6 +11,8 @@ export function Status({ value }: { value: EmailStatus }) {
   return <span className={`badge ${value.toLowerCase()}`}>{({PENDING: 'Pendente', SENT: 'Enviado', FAILED: 'Falhou', NOT_SENT: 'Não enviado'})[value]}</span>;
 }
 export function Detail({ initial, token, user, onNew, onEdit }: { initial: Bulletin; token: string; user: User; onNew: () => void; onEdit: (b: Bulletin) => void }) {
+  const [pdf,setPdf] = useState('');
+  const [copied,setCopied] = useState('');
   const [record, setRecord] = useState(initial);
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
@@ -32,15 +35,15 @@ export function Detail({ initial, token, user, onNew, onEdit }: { initial: Bulle
     finally { setBusy(false); }
   }
   const title = {DRAFT: 'Rascunho disponível', ISSUED: 'Boletim gerado com sucesso', CANCELLED: 'Boletim cancelado', REMOVED: 'Boletim removido'}[record.status];
-  return <><div className="page-heading"><div><h1>Boletim {record.bo_number}</h1><p>Registrado por: {record.created_by_name} ({record.created_by_username})</p></div><button className="secondary" onClick={onNew}>Novo boletim</button></div>
+  return <><div className="page-heading"><div><h1>{record.bo_number ? `Boletim ${record.bo_number}` : 'Rascunho sem protocolo'}</h1><p>Registrado por: {record.created_by_name} ({record.created_by_username})</p></div><button className="secondary" onClick={onNew}>Novo boletim</button></div>
     {error && <p role="alert" className="error-box">{error}</p>}
-    <div className="card"><h2>{title}</h2><p>Versão do PDF: {record.current_revision || 'Ainda não emitido'}</p>
+    {pdf && <PdfPreview url={pdf} onClose={()=>setPdf('')}/>}<div className="card"><h2>{title}</h2><p>{record.data.occurrence_type} · {record.data.occurrence_summary}</p><p>{record.data.occurrence_date} · {record.data.occurrence_time} · {record.data.location.city}</p><p>{record.data.people.length} envolvidos</p>{record.bo_number && <><button className="secondary" onClick={async()=>{try{await navigator.clipboard.writeText(record.bo_number!);setCopied('Protocolo copiado.');}catch{setCopied('Selecione o protocolo abaixo e use Copiar.');}}}>Copiar protocolo</button>{copied && <p role="status">{copied}<input aria-label="Protocolo para copiar" readOnly value={record.bo_number} onFocus={e=>e.target.select()}/></p>}</>}<p>Versão do PDF: {record.current_revision || 'Ainda não emitido'}</p>
       {record.edited_at && <p>Alterado por: {record.edited_by_name} ({record.edited_by_username}) · {new Date(record.edited_at).toLocaleString('pt-BR')} · {record.edit_reason}</p>}
       {record.cancelled_at && <p>Cancelado por: {record.cancelled_by_name} ({record.cancelled_by_username}) · {new Date(record.cancelled_at).toLocaleString('pt-BR')} · {record.cancellation_reason}</p>}
       {record.deleted_at && <p>Removido por: {record.deleted_by_name} ({record.deleted_by_username}) · {new Date(record.deleted_at).toLocaleString('pt-BR')} · {record.deletion_reason}</p>}
       {record.status === 'ISSUED' && <><div className="delivery-status"><div><span>E-mail institucional</span><Status value={record.battalion_email_status}/></div><div><span>E-mail informado · {record.recipient_email}</span><Status value={record.recipient_email_status}/></div></div>{record.recipient_email_status === 'NOT_SENT' && <p className="notice">Boletim atualizado. Deseja reenviar o PDF atualizado? Você também pode deixar para depois.</p>}</>}
       <div className="action-row">
-        {record.status === 'ISSUED' && <button className="primary" onClick={() => downloadPdf(record.id, token).catch(e => setError(e.message))}>Baixar PDF</button>}
+        {record.status === 'ISSUED' && <button className="secondary" onClick={()=>pdfUrl(`/api/bo/${record.id}/pdf`,token).then(setPdf).catch(e=>setError(e.message))}>Visualizar PDF</button>}{record.status === 'ISSUED' && <a className="secondary" href={`/verificar/${record.id}?revision=${record.current_revision}`}>Verificar documento</a>}{record.status === 'ISSUED' && <button className="primary" onClick={() => downloadPdf(record.id, token).catch(e => setError(e.message))}>Baixar PDF</button>}
         {active && (record.status === 'DRAFT' || user.role === 'ADMIN') && <button className="secondary" onClick={() => onEdit(record)}>{record.status === 'DRAFT' ? 'Continuar preenchimento' : 'Editar boletim'}</button>}
         {user.role === 'ADMIN' && <>
           {record.status === 'ISSUED' && <button className="secondary" onClick={() => setAction('resend-email')}>Reenviar e-mail</button>}

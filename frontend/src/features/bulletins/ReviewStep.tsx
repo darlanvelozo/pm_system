@@ -6,7 +6,7 @@ function Value({ value }: { value: unknown }) {
   if (value === null || value === '') return <span className="muted">Não informado</span>;
   if (typeof value === 'boolean') return <>{value ? 'Sim' : 'Não'}</>;
   if (Array.isArray(value)) return <>{value.map((item, i) => <div className="review-array" key={i}>{typeof item === 'object' && <h4>Registro {i+1}</h4>}<Value value={item} /></div>)}</>;
-  if (typeof value === 'object') return <dl className="review-grid">{Object.entries(value as Record<string, unknown>).filter(([key,v]) => key !== 'id' && key !== 'bulletin_type' && !(key === 'extras' && v === null)).map(([key,v]) => <div className={typeof v === 'object' ? 'wide' : ''} key={key}><dt>{labels[key] || key}</dt><dd><Value value={v} /></dd></div>)}</dl>;
+  if (typeof value === 'object') return <dl className="review-grid">{Object.entries(value as Record<string, unknown>).filter(([key,v]) => !['id','bulletin_type','draft_step'].includes(key) && !(key === 'extras' && v === null)).map(([key,v]) => <div className={typeof v === 'object' ? 'wide' : ''} key={key}><dt>{labels[key] || key}</dt><dd><Value value={v} /></dd></div>)}</dl>;
   return <>{String(value)}</>;
 }
 export function ReviewStep({ data }: { data: BulletinData }) {

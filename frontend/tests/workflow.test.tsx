@@ -33,8 +33,9 @@ describe('perfis e validação', () => {
   it('valida email sem limitar quantidade ou apagar extras', () => {
     expect(bulletinSchema.safeParse(validData()).success).toBe(true);
     expect(bulletinSchema.safeParse({...validData(), recipient_email:'invalid'}).success).toBe(false);
-    const changed = changeProfile(validData(), 'FOUR_INVOLVED');
-    expect(changed.people).toEqual(validData().people);
+    const original = validData();
+    const changed = changeProfile(original, 'FOUR_INVOLVED');
+    expect(changed.people).toEqual(original.people);
     expect(apiPayload(changed).delivery.date).toBeNull();
   });
   it('revisão mostra destinatário e histórico', () => {
@@ -75,7 +76,7 @@ describe('rascunho, etapas e API', () => {
     await userEvent.click(screen.getByRole('button', { name: /Continuar/ }));
     expect(screen.getByText('ETAPA 2 DE 8')).toBeInTheDocument();
     await userEvent.click(screen.getByRole('button', { name: /Voltar e corrigir/ }));
-    expect(screen.getByLabelText(/Nº do BO/)).toHaveValue('TEST-01');
+    expect(screen.getByLabelText(/Tipo de ocorrência/)).toHaveValue('Teste');
   });
   it('retorna erros seguros da API e falhas de conexão', async () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: false, status: 409, json: async () => ({ detail: 'Número já utilizado' }) }));

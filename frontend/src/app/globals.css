@@ -25,3 +25,5 @@ html{scroll-padding-top:80px}input,textarea,select{scroll-margin-top:100px}.mobi
   .bulletin-cards{display:grid;gap:12px;padding:12px}.desktop-bulletins{display:none}.bulletin-cards .card{margin:0;overflow-wrap:anywhere}
   .wizard-actions{position:static;gap:10px;padding-bottom:env(safe-area-inset-bottom)}button,.primary,.secondary,.text-button,select{min-height:44px}input,textarea,select{font-size:16px!important;max-width:100%}.section-line{flex-wrap:wrap;gap:8px}.section-line h3{margin:0}.modal{padding:16px}.page-heading h1{overflow-wrap:anywhere}.search{width:100%}.stats{grid-template-columns:1fr!important}.delivery-status{display:flex;flex-direction:column}.person-section{padding:14px!important}.form-grid.three{grid-template-columns:1fr}
 }
+
+.person-section{scroll-margin-top:calc(90px + env(safe-area-inset-top))}.person-section .action-row{margin-block:16px}.person-section .action-row button{white-space:normal}

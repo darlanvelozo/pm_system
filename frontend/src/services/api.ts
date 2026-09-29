@@ -1,4 +1,9 @@
 const base = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+export async function pdfUrl(path: string, token: string, data?: unknown) {
+  const response = await fetch(`${base}${path}`, {method: data ? 'POST' : 'GET', cache:'no-store', headers:{Authorization:`Bearer ${token}`, 'Content-Type':'application/json'}, ...(data ? {body:JSON.stringify(data)} : {})});
+  if(!response.ok) throw new ApiError('Não foi possível gerar ou abrir o PDF. Confira os dados.', response.status);
+  return URL.createObjectURL(await response.blob());
+}
 export class ApiError extends Error { constructor(message: string, public status: number) { super(message); } }
 export async function api<T>(path: string, token?: string, init: RequestInit = {}): Promise<T> {
   let response: Response;

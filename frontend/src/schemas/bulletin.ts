@@ -33,7 +33,7 @@ export const personSchema = z.object({
 export const teamSchema = z.object({ vehicle: text, commander_name: text, commander_registration: text, patrol_officer_name: text, patrol_officer_registration: text });
 export const bulletinSchema = z.object({
   bulletin_type: z.enum(['DYNAMIC', 'TWO_INVOLVED', 'FOUR_INVOLVED']), recipient_email: z.email('Informe um e-mail válido'),
-  bo_number: required.max(100).regex(/^[^\r\n]+$/), dispatch_number: text, occurrence_type: required.max(200), occurrence_date: date, occurrence_time: time,
+  bo_number: z.string().nullable().optional(), occurrence_summary: z.string().trim().max(80), draft_step: z.number().int().min(0).max(7), dispatch_number: text, occurrence_type: required.max(200), occurrence_date: date, occurrence_time: time,
   location: z.object({ street: required, number: text, neighborhood: text, complement: text, zip_code: text.max(9), reference: text, city: required, location_type: text }),
   people: z.array(personSchema).min(1), history: z.string().trim().min(1, 'Descreva o histórico').max(40000), seized_material: z.string().max(20000),
   team: z.array(teamSchema).min(1), delivery: z.object({ unit: text, date: optionalDate, time: z.union([time, z.literal(''), z.null()]), registration: text, name: text }),
@@ -53,7 +53,7 @@ export function emptyPerson(extras = true): z.infer<typeof personSchema> {
 }
 export const emptyTeam = () => ({ vehicle: '', commander_name: '', commander_registration: '', patrol_officer_name: '', patrol_officer_registration: '' });
 export function initialData(): BulletinData {
-  return { bulletin_type: 'DYNAMIC', recipient_email: '', bo_number: '', dispatch_number: '', occurrence_type: '', occurrence_date: '', occurrence_time: '', location: { street: '', number: '', neighborhood: '', complement: '', zip_code: '', reference: '', city: '', location_type: '' }, people: [emptyPerson()], history: '', seized_material: '', team: [emptyTeam(), emptyTeam()], delivery: { unit: '', date: '', time: '', registration: '', name: '' } };
+  return { bulletin_type: 'DYNAMIC', recipient_email: '', bo_number: null, occurrence_summary: '', draft_step: 0, dispatch_number: '', occurrence_type: '', occurrence_date: '', occurrence_time: '', location: { street: '', number: '', neighborhood: '', complement: '', zip_code: '', reference: '', city: '', location_type: '' }, people: [{...emptyPerson(), id: crypto.randomUUID()}], history: '', seized_material: '', team: [emptyTeam(), emptyTeam()], delivery: { unit: '', date: '', time: '', registration: '', name: '' } };
 }
 // Compatibility helper: legacy layout metadata must never remove personal data.
 export function changeProfile(data: BulletinData, type: BulletinType): BulletinData {
@@ -65,7 +65,7 @@ export function positionLabel(index: number): string {
   return result;
 }
 export function normalizeData(data: BulletinData): BulletinData {
-  return {...data, occurrence_date: data.occurrence_date || '', occurrence_time: data.occurrence_time || '', people: data.people.map(p => ({...emptyPerson(), ...p, extras: p.extras || emptyExtras()}))};
+  return {...initialData(), ...data, occurrence_date: data.occurrence_date || '', occurrence_time: data.occurrence_time || '', people: data.people.map(p => ({...emptyPerson(), ...p, extras: p.extras || emptyExtras()}))};
 }
 export function apiPayload(data: BulletinData) {
   return { ...data, people: data.people.map(p => ({ ...p, birth_date: p.birth_date || null })), delivery: { ...data.delivery, date: data.delivery.date || null, time: data.delivery.time || null } };

@@ -28,4 +28,5 @@ export function useDraft(form: UseFormReturn<BulletinData>, user: string, enable
 export function clearUserDrafts(user: string) {
   const prefix = draftKey(user);
   for (const key of Object.keys(localStorage)) if (key === prefix || key.startsWith(prefix + ':')) localStorage.removeItem(key);
+  for (const key of Object.keys(localStorage)) if(key.startsWith(`bo24:emission:${user}:`)) localStorage.removeItem(key);
 }
