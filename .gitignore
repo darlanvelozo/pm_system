@@ -24,3 +24,5 @@ uploads/
 docs/references/*
 !docs/references/README.md
 .neon
+
+frontend/public/sw.js
