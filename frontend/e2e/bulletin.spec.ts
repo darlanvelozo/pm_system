@@ -1,47 +1,184 @@
-import { expect, test } from '@playwright/test';
-const credentials = { email: 'e2e@example.com', password: 'Fictional-e2e-password-2026' };
-test('fluxo real: login, BO 02, BO 04, emissão e download', async ({ page }) => {
+import { expect, test, type Page } from '@playwright/test';
+import { readFile, writeFile } from 'node:fs/promises';
+const admin = { username: 'e2e@example.com', password: 'Fictional-e2e-password-2026' };
+const stamp = Date.now();
+const operator = {username: `joao.teste.${stamp}`, password: 'Fictional-e2e-password-2026'};
+test.setTimeout(180000);
+async function login(page: Page, account = admin) {
   await page.goto('/');
-  await page.screenshot({ path: '../.local/screenshots/login.png', fullPage: true });
-  await page.getByLabel('E-mail', { exact: true }).fill(credentials.email);
-  await page.getByLabel('Senha', { exact: true }).fill(credentials.password);
-  await page.getByRole('button', { name: 'Acessar sistema' }).click();
-  await expect(page.getByRole('heading', { name: 'Painel de boletins' })).toBeVisible();
-  for (const count of [2,4]) {
-    await page.getByRole('button', { name: 'Novo boletim', exact: true }).last().click();
-    if (count === 4) {
-      page.once('dialog', dialog => dialog.accept());
-      await page.getByRole('button', { name: /04 envolvidos/ }).click();
-    }
-    const number = `E2E-${count}-${Date.now()}`;
-    await page.getByLabel(/E-mail para recebimento/).fill('recipient@example.com');
-    await page.getByLabel(/Nº do BO/).fill(number);
-    await page.getByLabel(/Tipo de ocorrência/).fill('Teste fictício de integração');
-    await page.getByLabel('Data *', { exact: true }).fill('2026-01-01');
-    await page.getByLabel('Hora *', { exact: true }).fill('12:30');
-    await page.getByRole('button', { name: 'Continuar', exact: true }).click();
-    await page.getByLabel(/Logradouro/).fill('Logradouro fictício');
-    await page.getByLabel(/Município/).fill('Município fictício');
-    await page.getByRole('button', { name: 'Continuar', exact: true }).click();
-    await expect(page.getByLabel('Nome', { exact: true })).toHaveCount(count);
-    await expect(page.getByLabel('Vestimentas')).toHaveCount(count === 2 ? 2 : 0);
-    await page.getByLabel('Nome', { exact: true }).first().fill('Pessoa fictícia');
-    await page.getByRole('button', { name: 'Continuar', exact: true }).click();
-    await page.getByLabel(/Histórico da ocorrência/).fill('Narrativa sintética com acentuação para teste de ponta a ponta.');
-    for (let step=0;step<4;step++) await page.getByRole('button', { name: 'Continuar', exact: true }).click();
-    await expect(page.getByText('recipient@example.com', { exact:true })).toBeVisible();
-    await page.getByRole('button', { name: 'Confirmar e gerar boletim' }).click();
-    await expect(page.getByRole('heading', { name: 'Boletim gerado com sucesso' })).toBeVisible();
-    await expect(page.getByText('Falhou', { exact: true })).toHaveCount(2, { timeout: 15000 });
-    const download = page.waitForEvent('download');
-    await page.getByRole('button', { name: 'Baixar PDF' }).click();
-    const file = await download;
-    expect(await file.failure()).toBeNull();
-    await file.saveAs(`../.local/generated/e2e-${count}.pdf`);
-    await page.getByRole('button', { name: 'Painel de boletins' }).click();
-    await expect(page.getByRole('button', { name: number, exact:true })).toBeVisible();
+  await page.getByLabel('Usuário', {exact: true}).fill(account.username);
+  await page.getByLabel('Senha', {exact: true}).fill(account.password);
+  await page.getByRole('button', {name:'Acessar sistema'}).click();
+  await expect(page.getByRole('heading', {name:'Painel de boletins'})).toBeVisible();
+}
+async function forward(page: Page, count = 1) {
+  for (let i=0;i<count;i++) await page.getByRole('button', {name:'Continuar', exact:true}).click();
+}
+async function newBo(page: Page, number: string, count: number) {
+  await page.getByRole('button', {name:'Novo boletim', exact:true}).last().click();
+  await page.getByLabel(/E-mail para recebimento/).fill('recipient@example.com');
+  await page.getByLabel(/Nº do BO/).fill(number);
+  await page.getByLabel(/Tipo de ocorrência/).fill('Teste fictício de integração');
+  await page.getByLabel('Data *', {exact:true}).fill('2026-01-01');
+  await page.getByLabel('Hora *', {exact:true}).fill('12:30');
+  await forward(page);
+  await page.getByLabel(/Logradouro/).fill('Rua fictícia');
+  await page.getByLabel(/Município/).fill('Cidade fictícia');
+  await forward(page);
+  for (let i=0;i<count;i++) {
+    if(i) await page.getByRole('button', {name:/Adicionar envolvido/}).click();
+    await page.getByLabel('Nome', {exact:true}).fill(`Pessoa Ficticia ${i}`);
   }
-  await page.screenshot({ path: '../.local/screenshots/dashboard.png', fullPage: true });
-  await page.setViewportSize({ width:390, height:844 });
-  await page.screenshot({ path: '../.local/screenshots/mobile.png', fullPage: true });
+  await forward(page);
+  await page.getByLabel(/Histórico da ocorrência/).fill('Narrativa fictícia para teste completo.');
+  await forward(page,4);
+  await page.getByRole('button', {name:'Confirmar e gerar boletim'}).click();
+  await expect(page.getByRole('heading', {name:'Boletim gerado com sucesso'})).toBeVisible();
+  await expect(page.getByText('Falhou', {exact:true})).toHaveCount(2);
+}
+test('admin cria operador; operador emite; admin revisa, cancela, remove e consulta auditoria', async ({page}) => {
+  await login(page);
+  await page.getByRole('button', {name:'Usuários', exact:true}).click();
+  await page.getByLabel('Nome completo', {exact:true}).fill('João Teste Operador');
+  await page.getByLabel('Nome de usuário (login)').fill(operator.username);
+  await page.getByLabel(/Senha inicial/).fill(operator.password);
+  await page.getByRole('button', {name:'Criar usuário', exact:true}).click();
+  await expect(page.getByText('Usuário criado. Ele já pode entrar com o login e a senha informados.')).toBeVisible();
+  await login(page,operator);
+  const number = `E2E-DYNAMIC-${stamp}`;
+  await newBo(page,number,2);
+  await expect(page.getByText(/Registrado por: João Teste Operador/)).toBeVisible();
+  await login(page);
+  await page.getByRole('button', {name:number,exact:true}).click();
+  await page.getByRole('button', {name:'Editar boletim',exact:true}).click();
+  await forward(page,2);
+  for(let i=2;i<7;i++) {
+    await page.getByRole('button', {name:/Adicionar envolvido/}).click();
+    await page.getByLabel('Nome', {exact:true}).fill(`Pessoa Ficticia ${i}`);
+  }
+  await forward(page,5);
+  await page.getByRole('button', {name:'Confirmar e regenerar PDF'}).click();
+  await page.getByLabel('Motivo da alteração').fill('Inclusão fictícia de cinco envolvidos');
+  await page.getByRole('button', {name:'Confirmar correção',exact:true}).click();
+  await expect(page.getByText('Versão do PDF: 2')).toBeVisible();
+  await expect(page.getByText('Não enviado', {exact:true})).toHaveCount(2);
+  const download = page.waitForEvent('download');
+  await page.getByRole('button',{name:'Baixar PDF',exact:true}).click();
+  await (await download).saveAs('../.local/generated/e2e-dynamic-7.pdf');
+  await page.getByRole('button',{name:'Histórico de versões'}).click();
+  await expect(page.getByRole('heading',{name:'Versão 1 · 2 envolvidos'})).toBeVisible();
+  await expect(page.getByRole('heading',{name:'Versão 2 · 7 envolvidos'})).toBeVisible();
+  await page.getByRole('button',{name:'Editar boletim',exact:true}).click();
+  await forward(page,2);
+  await page.getByRole('button',{name:'Remover envolvido C',exact:true}).click();
+  await page.getByRole('button',{name:'Confirmar remoção'}).click();
+  await page.getByRole('button',{name:'Editar envolvido C',exact:true}).click();
+  await expect(page.getByLabel('Nome',{exact:true})).toHaveValue('Pessoa Ficticia 3');
+  await forward(page,5);
+  await page.getByRole('button',{name:'Confirmar e regenerar PDF'}).click();
+  await page.getByLabel('Motivo da alteração').fill('Remoção fictícia de envolvido C');
+  await page.getByRole('button',{name:'Confirmar correção',exact:true}).click();
+  await expect(page.getByText('Versão do PDF: 3')).toBeVisible();
+  await page.getByRole('button',{name:'Cancelar boletim',exact:true}).click();
+  await page.getByLabel('Motivo',{exact:true}).fill('Cancelamento fictício');
+  await page.getByRole('button',{name:'Confirmar cancelamento'}).click();
+  await expect(page.getByRole('heading',{name:'Boletim cancelado',exact:true})).toBeVisible();
+  await page.getByRole('button',{name:'Remover boletim',exact:true}).click();
+  await page.getByLabel('Motivo',{exact:true}).fill('Remoção lógica fictícia');
+  await page.getByRole('button',{name:'Confirmar remoção'}).click();
+  await expect(page.getByRole('heading',{name:'Boletim removido',exact:true})).toBeVisible();
+  await page.getByRole('button',{name:'Painel de boletins',exact:true}).click();
+  await page.getByLabel('Filtrar status').selectOption('REMOVED');
+  await expect(page.getByRole('button',{name:number,exact:true})).toBeVisible();
+  await page.getByRole('button',{name:'Auditoria',exact:true}).click();
+  await expect(page.getByText('BO_ADMIN_EDITED').first()).toBeVisible();
+  await expect(page.getByRole('columnheader',{name:'Nome completo'})).toBeVisible();
+  await page.screenshot({path:'../.local/screenshots/audit-dynamic.png',fullPage:true});
+});
+
+test('mobile em seis larguras, manifest, service worker e cache seguro', async ({page,context}) => {
+  await login(page);
+  for(const width of [320,360,375,390,412,768]) {
+    await page.setViewportSize({width,height:844});
+    await expect(page.getByRole('navigation',{name:'Navegação rápida'})).toBeVisible();
+    const overflow = await page.evaluate(() => document.documentElement.scrollWidth > innerWidth + 2);
+    expect(overflow, `overflow at ${width}`).toBe(false);
+    await page.screenshot({path:`../.local/screenshots/mobile-${width}.png`,fullPage:true});
+  }
+  const manifest = await (await page.request.get('/manifest.webmanifest')).json();
+  expect(manifest.display).toBe('standalone');
+  expect(manifest.icons.map((i:{sizes:string})=>i.sizes)).toContain('192x192');
+  await page.evaluate(() => navigator.serviceWorker.ready);
+  await page.reload();
+  await expect.poll(()=>page.evaluate(()=>!!navigator.serviceWorker.controller)).toBe(true);
+  const keys = await page.evaluate(async()=> {
+    const result:string[]=[];
+    for(const key of await caches.keys()) for(const r of await (await caches.open(key)).keys()) result.push(r.url);
+    return result;
+  });
+  expect(keys.length).toBeGreaterThan(0);
+  expect(keys.every(url => !url.includes(':8000') && !url.includes('/api/') && !url.endsWith('.pdf'))).toBe(true);
+  await context.setOffline(true);
+  await page.goto('/sobre');
+  await expect(page.getByRole('heading',{name:'Sem conexão com a internet.'})).toBeVisible();
+  await context.setOffline(false);
+});
+
+test('instalação respeita recusa; atualização só recarrega após confirmação', async ({page}) => {
+  await login(page);
+  await page.evaluate(() => navigator.serviceWorker.ready);
+  await page.evaluate(() => window.dispatchEvent(new Event('beforeinstallprompt', {cancelable:true})));
+  await expect(page.getByRole('button',{name:'Instalar BO Online'})).toBeVisible();
+  await page.getByRole('button',{name:'Agora não'}).click();
+  await page.evaluate(() => window.dispatchEvent(new Event('beforeinstallprompt', {cancelable:true})));
+  await expect(page.getByRole('button',{name:'Instalar BO Online'})).toHaveCount(0);
+  await page.getByRole('button',{name:'Novo boletim',exact:true}).last().click();
+  await page.getByLabel(/Nº do BO/).fill('DRAFT-BEFORE-UPDATE');
+  const path = 'public/sw.js';
+  const original = await readFile(path,'utf8');
+  try {
+    await writeFile(path, original + `\n// Local E2E update ${Date.now()}\n`);
+    await page.evaluate(async () => { const registration = await navigator.serviceWorker.ready; await registration.update(); });
+    await expect(page.getByRole('button',{name:'Atualizar',exact:true})).toBeVisible({timeout:30000});
+    await expect(page.getByLabel(/Nº do BO/)).toHaveValue('DRAFT-BEFORE-UPDATE');
+    await page.getByRole('button',{name:'Atualizar',exact:true}).click();
+    await expect(page.getByRole('dialog')).toBeVisible();
+    await page.getByRole('button',{name:'Salvei meu trabalho, atualizar'}).click();
+    await expect(page.getByRole('button',{name:'Acessar sistema'})).toBeVisible();
+    await login(page);
+    await page.getByRole('button',{name:'Novo boletim',exact:true}).last().click();
+    await expect(page.getByLabel(/Nº do BO/)).toHaveValue('DRAFT-BEFORE-UPDATE');
+  } finally {
+    await writeFile(path, original);
+  }
+});
+
+test('modo standalone não oferece instalação novamente', async ({page}) => {
+  await page.addInitScript(() => {
+    const original = window.matchMedia.bind(window);
+    window.matchMedia = query => {
+      const result = original(query);
+      if(query === '(display-mode: standalone)') Object.defineProperty(result,'matches',{value:true});
+      return result;
+    };
+  });
+  await page.goto('/');
+  await expect(page.getByRole('button',{name:'Acessar sistema'})).toBeVisible();
+  await page.evaluate(() => window.dispatchEvent(new Event('beforeinstallprompt', {cancelable:true})));
+  await expect(page.getByRole('button',{name:'Instalar BO Online'})).toHaveCount(0);
+});
+
+test('mobile registra trinta envolvidos e recupera todos do servidor', async ({page}) => {
+  await page.setViewportSize({width:390,height:844});
+  await login(page);
+  const number = `E2E-THIRTY-${stamp}`;
+  await newBo(page,number,30);
+  await expect(page.getByText('Pessoa Ficticia 29',{exact:true})).toBeVisible();
+  const download = page.waitForEvent('download');
+  await page.getByRole('button',{name:'Baixar PDF',exact:true}).click();
+  await (await download).saveAs('../.local/generated/e2e-dynamic-30.pdf');
+  await login(page);
+  await page.getByRole('button',{name:`Abrir boletim ${number}`,exact:true}).click();
+  for(let i=0;i<30;i++) await expect(page.getByText(`Pessoa Ficticia ${i}`,{exact:true})).toBeVisible();
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 2)).toBe(true);
 });

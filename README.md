@@ -1,8 +1,8 @@
-Administrador inicial: `24bpmcoroata`, criada automaticamente na inicializacao. Configure `SINGLE_USER_MODE=true` e o segredo `SINGLE_USER_PASSWORD` no Render. Nao e necessario executar create-admin. Veja [usuarios e cancelamento](docs/login.md).
+Administrador inicial: `24bpmcoroata`, criado pelo bootstrap quando ainda não existe administrador. Configure `SINGLE_USER_MODE=true` e o segredo `SINGLE_USER_PASSWORD` no Render; depois da criação pode desativar o bootstrap. Veja [usuários](docs/login.md).
 
 # Envio no Render Free
 
-A configura??o recomendada agora usa Brevo via HTTPS, sem OAuth Google. Siga [o guia Brevo](docs/brevo.md). Gmail e SMTP continuam opcionais.
+A configuração recomendada usa Brevo via HTTPS, sem OAuth Google. Siga [o guia Brevo](docs/brevo.md). Gmail e SMTP continuam opcionais.
 
 # BO Online 24º BPM
 
@@ -19,14 +19,14 @@ render.yaml      Blueprint do backend; PostgreSQL externo gratuito no Neon
 docker-compose.yml  PostgreSQL para desenvolvimento
 ```
 
-Os modelos BO 02 e BO 04 têm schemas e interfaces próprios, baseados em perfis declarativos. BO 02 inclui vestimentas, locomoção, arma de fogo, droga, veículo e arma branca individualmente. BO 04 tem quatro envolvidos e observações, sem esses extras.
+O formulário usa envolvidos dinâmicos, iniciando com A e permitindo adicionar/remover pessoas sem perder dados. Todos podem receber campos complementares; o PDF adapta as páginas à quantidade e ao conteúdo. Veja [boletins, revisões e homologação](docs/dynamic-bulletins.md) e [PWA e mobile](docs/pwa.md).
 
 ## Pré-requisitos
 
 - Node.js 24 LTS e npm.
 - Python 3.12 e PostgreSQL 17.
 - Git para versionamento.
-- Credenciais OAuth do Gmail para Render Free, ou servidor SMTP com TLS em hospedagem compativel. Veja [o guia](docs/gmail-api.md).
+- Credencial Brevo para envio HTTPS no Render Free; Gmail e SMTP são alternativas. Veja [o guia](docs/brevo.md).
 
 Ferramentas portáteis eventualmente usadas no desenvolvimento ficam em `.tools/`, ignorado pelo Git. Não são necessárias no deploy.
 
@@ -86,15 +86,15 @@ Abra `http://localhost:3000`. `NEXT_PUBLIC_API_URL` aponta para a API, por padr�
 
 ## Uso
 
-1. Entre com e-mail e senha cadastrados pelo administrador.
-2. Escolha Novo boletim, informe e-mail, modelo e número manual.
+1. Entre com usuário e senha cadastrados pelo administrador.
+2. Escolha Novo boletim, informe e-mail de recebimento e número manual.
 3. Preencha local, envolvidos, histórico, material, efetivo e entrega.
 4. Revise os dados na última etapa e confirme a emissão.
 5. Acompanhe os status reais e baixe o PDF.
 
-O rascunho incompleto é salvo automaticamente no navegador, separado por usuário. Dura até sete dias para recuperação e é removido ao sair explicitamente ou emitir. Não use dispositivos compartilhados sem encerrar a sessão. O botão Salvar no servidor requer os campos obrigatórios completos; os rascunhos persistidos aparecem na listagem e podem ser editados. Boletins emitidos são imutáveis nesta versão.
+O rascunho incompleto é salvo automaticamente no navegador, separado por usuário e boletim. Dura até sete dias e é removido ao sair explicitamente ou emitir. Salvar no servidor exige o número do BO e permite outros campos incompletos. Boletins emitidos podem ser corrigidos por ADMIN, com motivo, confirmação e preservação de todas as versões do PDF.
 
-O JWT permanece apenas em memória e expira em 30 minutos. Após recarregar a página, faça login novamente para recuperar o rascunho local. Não há renovação automática nem recuperação de senha por e-mail; o administrador pode redefini-la pela API administrativa.
+O JWT permanece apenas em memória e expira em 30 minutos. Após recarregar a página, faça login novamente para recuperar o rascunho local. Não há renovação automática nem recuperação de senha por e-mail; o administrador pode redefini-la em Administração → Usuários.
 
 ## Permissões
 
@@ -103,6 +103,7 @@ O JWT permanece apenas em memória e expira em 30 minutos. Após recarregar a p�
 | Criar, revisar e emitir | Sim | Sim |
 | Consultar e baixar | Próprios boletins | Todos |
 | Alterar rascunho | Próprios | Todos |
+| Corrigir emitido / versões / cancelar / remover | Não | Sim |
 | Reenviar e-mail | Não | Sim |
 | Gerenciar usuários / auditoria | Não | Sim |
 
@@ -110,7 +111,7 @@ A regra de consulta conservadora precisa de homologação institucional. O núme
 
 ## PDF
 
-ReportLab produz A4, tabelas com bordas, títulos cinza, bandeira, emblema, classificação, características, lesões, narrativa e assinatura visual. Os dois templates estão em `backend/app/pdf/templates/`, com componentes comuns. Texto extenso expande os blocos e gera páginas adicionais. Nenhuma narrativa é truncada para caber em duas páginas.
+ReportLab produz A4, tabelas com bordas, títulos cinza, bandeira, emblema, classificação, características, lesões, narrativa e assinatura visual. O layout dinâmico está em `backend/app/pdf/layout.py`; os imports de templates antigos delegam a ele. Texto extenso expande os blocos e gera páginas adicionais, com número do BO e registrador. Nenhuma narrativa é truncada para caber em duas páginas.
 
 Os dois PDFs oficiais foram examinados localmente. **Não estão no repositório**, assim como imagens de páginas, texto extraído e dados pessoais. Apenas bandeira e emblema isolados, conferidos visualmente, são usados como ativos institucionais. O emblema herdou a baixa resolução do modelo; substituir por arte oficial de melhor qualidade quando disponível.
 
@@ -120,7 +121,7 @@ Os dois PDFs oficiais foram examinados localmente. **Não estão no repositório
 
 São duas mensagens independentes com o mesmo PDF: uma para `BATTALION_EMAIL` (padrão `boletimonline24bpm@gmail.com`) e outra para `recipient_email`. Não há CC. TLS é obrigatório: STARTTLS por padrão, ou TLS direto com `SMTP_SSL=true`.
 
-O registro e PDF são confirmados antes do envio. Status e timestamps de cada destinatário são independentes (`PENDING`, `SENT`, `FAILED`). Ausência de configuração SMTP resulta em `FAILED`, nunca em falso sucesso. O painel consulta novamente enquanto há envios pendentes.
+O registro e PDF são confirmados antes do envio. Status e timestamps de cada destinatário são independentes (`PENDING`, `SENT`, `FAILED`, `NOT_SENT`). Revisões ficam `NOT_SENT` até reenvio explícito. Ausência de configuração do provedor resulta em `FAILED`, nunca em falso sucesso. O painel consulta novamente enquanto há envios pendentes.
 
 O administrador pode reenviar para destinatário, batalhão ou ambos em `POST /api/bo/{id}/resend-email`, corpo `{"target":"recipient|battalion|both"}`. O mesmo registro, número e PDF são reutilizados. Envios são serializados com locks de linha do PostgreSQL.
 
@@ -181,6 +182,11 @@ Migrations em banco vazio de teste:
 ```sh
 alembic upgrade head
 alembic check
+```
+
+Somente em banco descartável sem boletins, valide também a reversão:
+
+```sh
 alembic downgrade base
 alembic upgrade head
 ```
@@ -195,7 +201,7 @@ npm test
 npm run build
 ```
 
-Consulte [validação](docs/validation.md) para resultados e limites da execução local. Dependências Python fixadas em `requirements.lock.txt`; frontend em `package-lock.json`.
+Consulte a [validação atual de envolvidos, revisões e PWA](docs/validation-20260929.md) para resultados e limites da execução local, além da [validação original](docs/validation.md). Dependências Python fixadas em `requirements.lock.txt`; frontend em `package-lock.json`.
 
 ## Vercel e Render
 
@@ -203,7 +209,7 @@ Vercel: importe o repositório, **Root Directory `frontend`**, framework Next.js
 
 Render: o Blueprint `render.yaml` usa o plano **Free**, PostgreSQL externo Neon e envio HTTPS pela API do Brevo. Root Directory: `backend`. Build: `pip install -r requirements.lock.txt`. Start: `alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port $PORT --workers 1 --no-access-log`. Configure o remetente e a chave de API conforme [Brevo no Render Free](docs/brevo.md). Para servicos existentes, ajuste tambem o plano e os comandos no painel. O envio real depende da autorizacao da conta remetente.
 
-Execute `python -m app.cli create-admin` no ambiente do backend. Faça smoke test com dados fictícios, confirme dois recebimentos reais em homologação e valide o PDF antes de uso institucional. Deploy é preparação de infraestrutura, não substitui homologação.
+Use o bootstrap ou `python -m app.cli create-admin` conforme [login](docs/login.md). Faça smoke test com dados fictícios, confirme dois recebimentos reais em homologação e valide o PDF antes de uso institucional. Deploy não substitui homologação.
 
 Referências técnicas: [Next.js](https://nextjs.org/docs/app/getting-started/installation), [FastAPI — autenticação](https://fastapi.tiangolo.com/tutorial/security/oauth2-jwt/), [Vercel — monorepos](https://vercel.com/docs/monorepos), [Render — FastAPI](https://render.com/docs/deploy-fastapi).
 
