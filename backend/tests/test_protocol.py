@@ -75,3 +75,33 @@ def test_concurrent_emissions_postgresql(client, accounts, payload, monkeypatch)
     with SessionLocal() as db:
         assert db.scalar(select(func.count()).select_from(Bulletin)) == 9
         assert db.scalar(select(func.count()).select_from(BulletinRevision)) == 9
+
+
+def test_failed_pdf_rolls_back_number_and_document(client, accounts, payload, monkeypatch):
+    import pytest
+    def fail(*args, **kwargs):
+        raise RuntimeError('Fictional PDF failure')
+    monkeypatch.setattr('app.services.bulletins.generate_pdf', fail)
+    with pytest.raises(RuntimeError, match='Fictional PDF failure'):
+        client.post('/api/bo',headers={**accounts['operator']['headers'],'Idempotency-Key':str(uuid.uuid4())},json={'data':payload,'emit':True})
+    with SessionLocal() as db:
+        assert db.scalar(select(func.count()).select_from(Bulletin)) == 0
+        assert db.scalar(select(func.count()).select_from(BulletinSequence)) == 0
+        assert db.scalar(select(func.count()).select_from(BulletinRevision)) == 0
+
+
+def test_qr_contains_only_authenticated_verification_url(payload, monkeypatch):
+    from reportlab.graphics.barcode import qr
+    from app.pdf.generator import generate_pdf
+    from app.schemas.bulletin import BulletinInput
+    from app.core.config import settings
+    original = qr.QrCodeWidget
+    urls = []
+    def capture(value):
+        urls.append(value)
+        return original(value)
+    monkeypatch.setattr(qr, 'QrCodeWidget', capture)
+    bid = uuid.uuid4()
+    content = generate_pdf(BulletinInput.model_validate(payload),bulletin_id=bid,version=2)
+    assert content.startswith(b'%PDF')
+    assert urls and set(urls) == {f'{settings().frontend_url}/verificar/{bid}?revision=2'}

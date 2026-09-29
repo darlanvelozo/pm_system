@@ -1,7 +1,7 @@
 from reportlab.platypus import KeepTogether
 from app.pdf.components import header, location, involved, narrative, ending
 
-PDF_LAYOUT_VERSION = '2026.2'
+PDF_LAYOUT_VERSION = '2026.3'
 
 
 def has_content(value):

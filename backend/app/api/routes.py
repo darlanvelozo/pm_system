@@ -2,7 +2,7 @@ import uuid
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, Response, Header
 from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, selectinload
 from sqlalchemy.orm.exc import StaleDataError
 from app.auth.security import admin, current_user, dummy_hash, hasher, token_for, verify
 from app.db.session import get_db
@@ -172,7 +172,7 @@ def listing(page: int = Query(1, ge=1), size: int = Query(20, ge=1, le=100), sta
     if user.role != 'ADMIN':
         query = query.where(Bulletin.created_by == user.id, Bulletin.status != 'REMOVED')
     total = db.scalar(select(func.count()).select_from(query.subquery()))
-    rows = db.scalars(query.order_by(Bulletin.created_at.desc()).offset((page-1)*size).limit(size)).all()
+    rows = db.scalars(query.options(selectinload(Bulletin.people)).order_by(Bulletin.created_at.desc()).offset((page-1)*size).limit(size)).all()
     # List endpoint intentionally omits personal data and narrative.
     return {'total': total, 'page': page, 'size': size, 'items': [{
         'id': str(b.id), 'bo_number': b.bo_number, 'bulletin_type': b.bulletin_type,
@@ -181,8 +181,22 @@ def listing(page: int = Query(1, ge=1), size: int = Query(20, ge=1, le=100), sta
         'occurrence_summary': b.data.get('occurrence_summary', ''), 'city': b.data.get('location', {}).get('city', ''),
         'current_revision': b.current_revision, 'updated_at': b.updated_at, 'involved_count': len(b.people),
         'draft_step': b.data.get('draft_step', 0),
+        **person_progress(b.people),
         'battalion_email_status': b.battalion_email_status, 'recipient_email_status': b.recipient_email_status,
     } for b in rows]}
+
+
+def person_progress(people):
+    from app.schemas.bulletin import Person
+    from pydantic import ValidationError
+    complete = 0
+    for person in people:
+        try:
+            Person.model_validate(person.data)
+            complete += 1
+        except ValidationError:
+            pass
+    return {'complete_count': complete, 'pending_count': len(people) - complete}
 
 
 def filter_bulletins(query, date_from=None, date_to=None, occurrence_type=''):
@@ -203,7 +217,7 @@ def operational_options(user=Depends(current_user), db: Session = Depends(get_db
     last = db.scalar(owned.order_by(Bulletin.updated_at.desc()).limit(1))
     types = db.scalars(select(Bulletin.data['occurrence_type'].as_string()).where(Bulletin.created_by == user.id, Bulletin.status != 'REMOVED').distinct().limit(100)).all()
     return {'occurrence_types': sorted(t for t in types if t), 'team': [t.data for t in last.team] if last else [],
-            'delivery': last.data.get('delivery', {}) if last else {}}
+            'delivery': {'unit': last.data.get('delivery', {}).get('unit', '')} if last else {}}
 
 
 @router.get('/admin/stats')

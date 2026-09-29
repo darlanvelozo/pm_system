@@ -1,4 +1,5 @@
 import uuid
+import hashlib
 import copy
 from io import BytesIO
 import pytest
@@ -48,6 +49,12 @@ def test_revision_growth_shrink_and_soft_removal(client, accounts, payload, monk
     r = r.json()
     assert len(calls) == 2  # revisions do not send automatically
     assert r['current_revision'] == 2
+    assert r['bo_number'] == body['data']['bo_number']
+    previous_hash = client.get(path + '/verify?revision=1', headers=admin).json()['pdf_sha256']
+    current_hash = client.get(path + '/verify?revision=2', headers=admin).json()['pdf_sha256']
+    assert previous_hash == hashlib.sha256(old_pdf).hexdigest()
+    assert previous_hash != current_hash
+    assert current_hash == hashlib.sha256(client.get(path + '/pdf', headers=admin).content).hexdigest()
     assert [p['id'] for p in r['data']['people'][:2]] == original_ids
     assert client.get(path + '/revisions/1/pdf', headers=admin).content == old_pdf
     text = pdf_text(client.get(path + '/pdf', headers=admin))
