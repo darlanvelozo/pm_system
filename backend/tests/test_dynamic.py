@@ -1,0 +1,82 @@
+import copy
+from io import BytesIO
+import pytest
+from pypdf import PdfReader
+from app.pdf.layout import position_label
+
+
+def pdf_text(response):
+    assert response.status_code == 200
+    return '\n'.join(p.extract_text() for p in PdfReader(BytesIO(response.content)).pages)
+
+
+@pytest.mark.parametrize('count', [1, 2, 3, 4, 5, 8, 12, 30])
+def test_dynamic_pdf(client, accounts, payload, count):
+    payload['bulletin_type'] = 'DYNAMIC'
+    payload['people'] = [{'name': f'Pessoa Ficticia {i:02d}', 'extras': {'clothing': f'Roupa teste {i:02d}'}} for i in range(count)]
+    h = accounts['operator']['headers']
+    r = client.post('/api/bo', headers=h, json={'data': payload, 'emit': True})
+    assert r.status_code == 201, r.text
+    record = r.json()
+    assert len(record['data']['people']) == count
+    assert len(set(p['id'] for p in record['data']['people'])) == count
+    text = pdf_text(client.get(f'/api/bo/{record["id"]}/pdf', headers=h))
+    for i in range(count):
+        assert f'Pessoa Ficticia {i:02d}' in text
+        assert f'Roupa teste {i:02d}' in text
+    assert 'operator (operator@example.com)' in text
+    assert position_label(25) == 'Z' and position_label(26) == 'AA' and position_label(29) == 'AD'
+
+
+def test_revision_growth_shrink_and_soft_removal(client, accounts, payload, monkeypatch):
+    calls = []
+    monkeypatch.setattr('app.services.bulletins.send_bulletin_pdf', lambda *args: calls.append(args) or True)
+    op, admin = accounts['operator']['headers'], accounts['admin']['headers']
+    payload['people'] = [{'name': 'Original A'}, {'name': 'Original B'}]
+    r = client.post('/api/bo', headers=op, json={'data': payload, 'emit': True}).json()
+    path = '/api/bo/' + r['id']
+    old_pdf = client.get(path + '/pdf', headers=admin).content
+    r = client.get(path, headers=admin).json()
+    original_ids = [p['id'] for p in r['data']['people']]
+    data = copy.deepcopy(r['data'])
+    data['people'] += [{'name': f'Novo {i}'} for i in range(5)]
+    body = {'data': data, 'version': r['version'], 'reason': 'Inclusão de pessoas fictícias'}
+    assert client.post(path + '/revise', headers=op, json=body).status_code == 403
+    r = client.post(path + '/revise', headers=admin, json=body)
+    assert r.status_code == 200, r.text
+    r = r.json()
+    assert len(calls) == 2  # revisions do not send automatically
+    assert r['current_revision'] == 2
+    assert [p['id'] for p in r['data']['people'][:2]] == original_ids
+    assert client.get(path + '/revisions/1/pdf', headers=admin).content == old_pdf
+    text = pdf_text(client.get(path + '/pdf', headers=admin))
+    assert all(f'Novo {i}' in text for i in range(5))
+    assert client.post(path + '/revise', headers=admin, json=body).status_code == 409
+    data = copy.deepcopy(r['data'])
+    retained = data['people'][4:]
+    data['people'] = retained
+    r = client.post(path + '/revise', headers=admin, json={'data': data, 'version': r['version'], 'reason': 'Remoção de pessoas fictícias'}).json()
+    assert r['data']['people'] == retained
+    assert r['current_revision'] == 3
+    text = pdf_text(client.get(path + '/pdf', headers=admin))
+    assert 'Original A' not in text and 'Novo 0' not in text and 'Novo 4' in text
+    assert len(client.get(path + '/revisions', headers=admin).json()) == 3
+    assert client.post(path + '/remove', headers=admin, json={'reason': 'Teste de remoção'}).status_code == 200
+    assert client.get(path, headers=op).status_code == 404
+    assert client.get('/api/bo', headers=admin).json()['total'] == 0
+    assert client.get('/api/bo?status=REMOVED', headers=admin).json()['total'] == 1
+    assert client.get(path + '/revisions/1/pdf', headers=admin).content == old_pdf
+
+
+def test_partial_draft_and_conflict(client, accounts, payload):
+    payload.update(history='', recipient_email='', occurrence_date=None, occurrence_time=None, occurrence_type='')
+    payload['location'] = {}
+    h = accounts['operator']['headers']
+    r = client.post('/api/bo', headers=h, json={'data': payload, 'emit': False})
+    assert r.status_code == 201, r.text
+    r = r.json()
+    url = '/api/bo/' + r['id']
+    assert client.put(url, headers=h, json={'data': payload, 'version': r['version'], 'emit': True}).status_code == 422
+    payload['history'] = 'Edição em outro dispositivo'
+    assert client.put(url, headers=h, json={'data': payload, 'version': r['version'], 'emit': False}).status_code == 200
+    assert client.put(url, headers=h, json={'data': payload, 'version': r['version'], 'emit': False}).status_code == 409

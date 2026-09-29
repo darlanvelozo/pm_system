@@ -1,10 +1,12 @@
 from datetime import date as Date, time as Time
 from enum import StrEnum
 from typing import Literal
+from uuid import UUID
 from pydantic import BaseModel, ConfigDict, EmailStr, Field, model_validator
 
 
 class BulletinType(StrEnum):
+    DYNAMIC = 'DYNAMIC'
     TWO_INVOLVED = 'TWO_INVOLVED'
     FOUR_INVOLVED = 'FOUR_INVOLVED'
 
@@ -53,6 +55,7 @@ class TwoExtras(FormModel):
 
 
 class Person(FormModel):
+    id: UUID | None = None
     role: Literal['', 'Autor', 'Suspeito', 'Vítima', 'Testemunha', 'Comunicante', 'Vítima Fatal'] = ''
     name: str = ''
     gender: str = ''
@@ -116,7 +119,7 @@ class BulletinInput(FormModel):
             value = {k: v for k, v in value.items() if k not in {'battalionEmail', 'battalion_email'}}
         return value
 
-    bulletin_type: BulletinType
+    bulletin_type: BulletinType = BulletinType.DYNAMIC
     recipient_email: EmailStr
     bo_number: str = Field(min_length=1, max_length=100, pattern=r'^[^\r\n]+$')
     dispatch_number: str = ''
@@ -124,29 +127,46 @@ class BulletinInput(FormModel):
     occurrence_date: Date
     occurrence_time: Time
     location: Location
-    people: list[Person] = Field(min_length=2, max_length=4)
+    people: list[Person] = Field(min_length=1)
     history: str = Field(min_length=1, max_length=40000)
     seized_material: str = Field(default='', max_length=20000)
-    team: list[Team] = Field(min_length=1, max_length=20)
+    team: list[Team] = Field(min_length=1)
     delivery: Delivery = Field(default_factory=Delivery)
 
-    @model_validator(mode='after')
-    def check_profile(self):
-        expected = 2 if self.bulletin_type == BulletinType.TWO_INVOLVED else 4
-        if len(self.people) != expected:
-            raise ValueError(f'O modelo requer exatamente {expected} posições de envolvidos')
-        if expected == 4 and any(p.extras is not None for p in self.people):
-            raise ValueError('Modelo BO 04 não admite campos exclusivos do BO 02')
-        return self
+
+class DraftLocation(Location):
+    street: str = ''
+    city: str = ''
+
+
+class DraftBulletin(BulletinInput):
+    recipient_email: EmailStr | Literal[''] = ''
+    occurrence_type: str = ''
+    occurrence_date: Date | None = None
+    occurrence_time: Time | None = None
+    location: DraftLocation = Field(default_factory=DraftLocation)
+    history: str = Field(default='', max_length=40000)
 
 
 class CreateBulletin(FormModel):
-    data: BulletinInput
+    data: DraftBulletin
     emit: bool = False
+
+    @model_validator(mode='after')
+    def validate_emission(self):
+        if self.emit:
+            self.data = BulletinInput.model_validate(self.data.model_dump())
+        return self
 
 
 class UpdateBulletin(CreateBulletin):
     version: int = Field(ge=1)
+
+
+class RevisionInput(FormModel):
+    data: BulletinInput
+    version: int = Field(ge=1)
+    reason: str = Field(min_length=3, max_length=500)
 
 
 class ResendInput(FormModel):

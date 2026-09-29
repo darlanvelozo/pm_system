@@ -6,9 +6,9 @@ from sqlalchemy.orm import Session
 from sqlalchemy.orm.exc import StaleDataError
 from app.auth.security import admin, current_user, dummy_hash, hasher, token_for, verify
 from app.db.session import get_db
-from app.models.entities import AuditLog, Bulletin, User
+from app.models.entities import AuditLog, Bulletin, BulletinRevision, User
 from app.repositories.bulletins import accessible, assign, present
-from app.schemas.bulletin import CreateBulletin, ResendInput, UpdateBulletin
+from app.schemas.bulletin import CreateBulletin, ResendInput, UpdateBulletin, RevisionInput
 from app.schemas.user import Login, UserCreate, UserUpdate
 from app.services.audit import audit
 from app.services.bulletins import deliver, emit
@@ -27,7 +27,7 @@ class CancelInput(BaseModel):
 @router.post('/bo/{bulletin_id}/cancel')
 def cancel(bulletin_id: uuid.UUID, data: CancelInput, user=Depends(admin), db: Session = Depends(get_db)):
     b = accessible(db, bulletin_id, user, lock=True)
-    if b.status == 'CANCELLED':
+    if b.status in ('CANCELLED', 'REMOVED'):
         raise HTTPException(409, 'Boletim já cancelado')
     reason = data.reason.strip()
     if len(reason) < 3:
@@ -36,9 +36,66 @@ def cancel(bulletin_id: uuid.UUID, data: CancelInput, user=Depends(admin), db: S
     b.cancelled_at = now()
     b.cancelled_by = user.id
     b.cancellation_reason = reason
+    b.lifecycle = {**(b.lifecycle or {}), 'cancelled_by_name': user.name, 'cancelled_by_username': user.username or user.email}
     audit(db, user.id, 'BO_CANCELLED', b.id)
     save(db)
     return present(b)
+
+
+@router.post('/bo/{bulletin_id}/remove')
+def remove_bulletin(bulletin_id: uuid.UUID, data: CancelInput, user=Depends(admin), db: Session = Depends(get_db)):
+    b = accessible(db, bulletin_id, user, lock=True)
+    if b.status == 'REMOVED':
+        raise HTTPException(409, 'Boletim já removido')
+    if len(data.reason.strip()) < 3:
+        raise HTTPException(422, 'Informe o motivo')
+    b.status, b.deleted_at, b.deleted_by, b.deletion_reason = 'REMOVED', now(), user.id, data.reason.strip()
+    b.lifecycle = {**(b.lifecycle or {}), 'deleted_by_name': user.name, 'deleted_by_username': user.username or user.email}
+    audit(db, user.id, 'BO_REMOVED', b.id)
+    save(db)
+    return present(b)
+
+
+@router.post('/bo/{bulletin_id}/revise')
+def revise(bulletin_id: uuid.UUID, data: RevisionInput, user=Depends(admin), db: Session = Depends(get_db)):
+    b = accessible(db, bulletin_id, user, lock=True)
+    if b.status != 'ISSUED':
+        raise HTTPException(409, 'Somente boletins emitidos podem receber revisão')
+    if b.version != data.version:
+        raise HTTPException(409, 'Boletim alterado em outro dispositivo. Atualize antes de continuar.')
+    if data.data.bo_number != b.bo_number:
+        raise HTTPException(422, 'A revisão deve preservar o número do BO')
+    b.edited_by, b.edited_at, b.edit_reason = user.id, now(), data.reason
+    b.lifecycle = {**(b.lifecycle or {}), 'edited_by_name': user.name, 'edited_by_username': user.username or user.email}
+    assign(db, b, data.data)
+    emit(db, b, data.data, user.id, data.reason)
+    # A new PDF has not been sent. Explicit resend is required after correction.
+    b.recipient_email_status = b.battalion_email_status = 'NOT_SENT'
+    b.recipient_email_sent_at = b.battalion_email_sent_at = None
+    audit(db, user.id, 'BO_ADMIN_EDITED', b.id)
+    save(db)
+    return present(b)
+
+
+@router.get('/bo/{bulletin_id}/revisions')
+def revisions(bulletin_id: uuid.UUID, user=Depends(admin), db: Session = Depends(get_db)):
+    accessible(db, bulletin_id, user)
+    return [{'version': r.version, 'created_at': r.created_at, 'actor_name': r.actor_name_snapshot,
+             'actor_username': r.actor_username_snapshot, 'reason': r.reason,
+             'involved_count': r.involved_count, 'pdf_layout_version': r.pdf_layout_version}
+            for r in db.scalars(select(BulletinRevision).where(BulletinRevision.bulletin_id == bulletin_id).order_by(BulletinRevision.version.desc()))]
+
+
+@router.get('/bo/{bulletin_id}/revisions/{version}/pdf')
+def revision_pdf(bulletin_id: uuid.UUID, version: int, user=Depends(admin), db: Session = Depends(get_db)):
+    b = accessible(db, bulletin_id, user)
+    r = db.scalar(select(BulletinRevision).where(BulletinRevision.bulletin_id == bulletin_id, BulletinRevision.version == version))
+    if not r:
+        raise HTTPException(404, 'Revisão não encontrada')
+    content = DatabaseStorage(db).get(r.pdf_storage_key)
+    audit(db, user.id, 'PDF_DOWNLOADED', b.id)
+    save(db)
+    return Response(content, media_type='application/pdf', headers={'Content-Disposition': f'attachment; filename="v{version}_{filename(b.bo_number)}"', 'Cache-Control': 'no-store'})
 
 
 def save(db):
@@ -73,7 +130,7 @@ def me(user=Depends(current_user)):
 @router.post('/bo', status_code=201)
 def create(data: CreateBulletin, tasks: BackgroundTasks, user=Depends(current_user), db: Session = Depends(get_db)):
     bulletin = Bulletin(id=uuid.uuid4(), created_by=user.id)
-    assign(bulletin, data.data)
+    assign(db, bulletin, data.data)
     db.add(bulletin)
     audit(db, user.id, 'BO_CREATED', bulletin.id)
     if data.emit:
@@ -85,16 +142,25 @@ def create(data: CreateBulletin, tasks: BackgroundTasks, user=Depends(current_us
 
 
 @router.get('/bo')
-def listing(page: int = Query(1, ge=1), size: int = Query(20, ge=1, le=100), user=Depends(current_user), db: Session = Depends(get_db)):
-    query = select(Bulletin)
+def listing(page: int = Query(1, ge=1), size: int = Query(20, ge=1, le=100), status: str | None = None, search: str = Query('', max_length=100), user=Depends(current_user), db: Session = Depends(get_db)):
+    query = select(Bulletin).join(User, Bulletin.created_by == User.id)
+    if status:
+        if status not in ('DRAFT', 'ISSUED', 'CANCELLED', 'REMOVED'):
+            raise HTTPException(422, 'Status inválido')
+        query = query.where(Bulletin.status == status)
+    else:
+        query = query.where(Bulletin.status != 'REMOVED')
+    if search:
+        pattern = '%' + search + '%'
+        query = query.where(Bulletin.bo_number.ilike(pattern) | Bulletin.data['occurrence_type'].as_string().ilike(pattern) | User.name.ilike(pattern) | User.username.ilike(pattern) | Bulletin.registered_by_name_snapshot.ilike(pattern) | Bulletin.registered_by_username_snapshot.ilike(pattern))
     if user.role != 'ADMIN':
-        query = query.where(Bulletin.created_by == user.id)
+        query = query.where(Bulletin.created_by == user.id, Bulletin.status != 'REMOVED')
     total = db.scalar(select(func.count()).select_from(query.subquery()))
     rows = db.scalars(query.order_by(Bulletin.created_at.desc()).offset((page-1)*size).limit(size)).all()
     # List endpoint intentionally omits personal data and narrative.
     return {'total': total, 'page': page, 'size': size, 'items': [{
         'id': str(b.id), 'bo_number': b.bo_number, 'bulletin_type': b.bulletin_type,
-        'created_by': str(b.created_by), 'created_by_name': b.creator.name, 'created_by_username': b.creator.username or b.creator.email, 'status': b.status, 'occurrence_type': b.data['occurrence_type'],
+        'created_by': str(b.created_by), 'created_by_name': b.registered_by_name_snapshot or b.creator.name, 'created_by_username': b.registered_by_username_snapshot or b.creator.username or b.creator.email, 'status': b.status, 'occurrence_type': b.data['occurrence_type'],
         'occurrence_date': b.data['occurrence_date'], 'pdf_generated_at': b.pdf_generated_at,
         'battalion_email_status': b.battalion_email_status, 'recipient_email_status': b.recipient_email_status,
     } for b in rows]}
@@ -111,8 +177,8 @@ def update(bulletin_id: uuid.UUID, data: UpdateBulletin, tasks: BackgroundTasks,
     if b.status != 'DRAFT':
         raise HTTPException(409, 'Boletim emitido não pode ser alterado')
     if b.version != data.version:
-        raise HTTPException(409, 'Rascunho alterado. Atualize a página.')
-    assign(b, data.data)
+        raise HTTPException(409, 'Este rascunho foi alterado em outro dispositivo. Atualize a página.')
+    assign(db, b, data.data)
     audit(db, user.id, 'BO_UPDATED', b.id)
     if data.emit:
         emit(db, b, data.data, user.id)

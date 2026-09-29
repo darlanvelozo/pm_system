@@ -28,6 +28,16 @@ class Bulletin(Base):
     cancelled_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     cancelled_by: Mapped[uuid.UUID | None] = mapped_column(ForeignKey('users.id'))
     cancellation_reason: Mapped[str | None] = mapped_column(String(500))
+    registered_by_name_snapshot: Mapped[str | None] = mapped_column(String(150))
+    registered_by_username_snapshot: Mapped[str | None] = mapped_column(String(254))
+    lifecycle: Mapped[dict] = mapped_column(JSON, default=dict)
+    deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    deleted_by: Mapped[uuid.UUID | None] = mapped_column(ForeignKey('users.id'))
+    deletion_reason: Mapped[str | None] = mapped_column(String(500))
+    edited_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    edited_by: Mapped[uuid.UUID | None] = mapped_column(ForeignKey('users.id'))
+    edit_reason: Mapped[str | None] = mapped_column(String(500))
+    current_revision: Mapped[int] = mapped_column(Integer, default=0)
     bo_number: Mapped[str] = mapped_column(String(100), unique=True)
     bulletin_type: Mapped[str] = mapped_column(String(20))
     recipient_email: Mapped[str] = mapped_column(String(254))
@@ -68,6 +78,23 @@ class PdfFile(Base):
     __tablename__ = 'pdf_files'
     key: Mapped[str] = mapped_column(String(100), primary_key=True)
     content: Mapped[bytes] = mapped_column(LargeBinary)
+
+
+class BulletinRevision(Base):
+    __tablename__ = 'bulletin_revisions'
+    __table_args__ = (UniqueConstraint('bulletin_id', 'version'),)
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
+    bulletin_id: Mapped[uuid.UUID] = mapped_column(ForeignKey('bulletins.id'), index=True)
+    version: Mapped[int] = mapped_column(Integer)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+    created_by: Mapped[uuid.UUID] = mapped_column(ForeignKey('users.id'))
+    actor_name_snapshot: Mapped[str] = mapped_column(String(150))
+    actor_username_snapshot: Mapped[str] = mapped_column(String(254))
+    reason: Mapped[str] = mapped_column(String(500))
+    pdf_storage_key: Mapped[str] = mapped_column(String(100))
+    pdf_layout_version: Mapped[str] = mapped_column(String(30))
+    involved_count: Mapped[int] = mapped_column(Integer)
+    data: Mapped[dict] = mapped_column(JSON)
 
 
 class AuditLog(Base):

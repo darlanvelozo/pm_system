@@ -84,9 +84,7 @@ def test_validation_profiles_and_no_sensitive_echo(client, accounts, payload):
     r = create(client, accounts, bad)
     assert r.status_code == 422 and 'invalid-address-sensitive' not in r.text
     bad = copy.deepcopy(payload)
-    bad['bulletin_type'] = 'FOUR_INVOLVED'
-    assert create(client, accounts, bad).status_code == 422
-    bad['people'] = [{'extras': {'clothing': 'teste'}}, {}, {}, {}]
+    bad['people'] = []
     assert create(client, accounts, bad).status_code == 422
     payload['people'][0]['extras'] = {'clothing': 'Vestuário fictício', 'firearm': {'selected': True, 'type': 'Teste'}}
     assert create(client, accounts, payload).status_code == 201

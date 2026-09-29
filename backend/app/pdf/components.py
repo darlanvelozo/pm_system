@@ -57,7 +57,7 @@ def checks(options, selected):
 def involved(person, position, extra=False):
     p = person
     roles = ['Autor', 'Suspeito', 'Vítima', 'Testemunha', 'Comunicante', 'Vítima Fatal']
-    items = [heading(f'ENVOLVIDO “{chr(65+position)}”   ' + checks(roles, [p.role])),
+    items = [heading(f'ENVOLVIDO “{position}”   ' + checks(roles, [p.role])),
         row([f'Nome: {p.name}', f'Sexo: {p.gender}', f'Data nascimento: {p.birth_date.strftime("%d/%m/%Y") if p.birth_date else ""}'], [.65, .15, .2]),
         row([f'Endereço: {p.address}', f'Município: {p.city}', f'Tel: {p.phone}'], [.48, .32, .2]),
         row([f'Mãe: {p.mother_name}', f'CPF: {p.cpf}'], [.8, .2]),
@@ -67,6 +67,7 @@ def involved(person, position, extra=False):
         row([f'Tatuagem: {p.tattoo}', f'Adereço: {p.accessory}']),
         row([f'Características Marcantes: {p.distinguishing_features}']),
         row(['Lesão: ' + checks(['Leve', 'Grave', 'Gravíssima', 'Ileso'], [p.injury_level]), f'Obs: {p.injury_notes}'], [.56, .44])]
+    items.append(row([f'Observação: {p.observations}']))
     if not extra:
         items.append(row([f'Observação: {p.observations}']))
     else:
