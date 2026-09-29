@@ -8,3 +8,6 @@ def test_username_without_email(client, accounts):
     assert login.status_code == 200
     assert client.post('/api/auth/login', json={'username': 'novo.usuario', 'password': 'wrong'}).status_code == 401
     assert client.post('/api/admin/users', json=payload, headers=accounts['admin']['headers']).status_code == 409
+    events = client.get('/api/admin/audit', headers=accounts['admin']['headers']).json()
+    event = next(e for e in events if e['action'] == 'USER_LOGIN' and e['username'] == 'novo.usuario')
+    assert event['user_name'] == 'Teste'

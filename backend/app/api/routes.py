@@ -187,6 +187,9 @@ def update_user(user_id: uuid.UUID, data: UserUpdate, user=Depends(admin), db: S
 
 @router.get('/admin/audit')
 def audit_events(page: int = Query(1, ge=1), user=Depends(admin), db: Session = Depends(get_db)):
-    return [{'id': str(a.id), 'user_id': str(a.user_id), 'bulletin_id': str(a.bulletin_id) if a.bulletin_id else None,
+    return [{'id': str(a.id), 'user_id': str(a.user_id), 'user_name': actor.name if actor else None,
+             'username': (actor.username or actor.email) if actor else None,
+             'bulletin_id': str(a.bulletin_id) if a.bulletin_id else None,
              'action': a.action, 'result': a.result, 'created_at': a.created_at}
-            for a in db.scalars(select(AuditLog).order_by(AuditLog.created_at.desc()).offset((page-1)*50).limit(50))]
+            for a, actor in db.execute(select(AuditLog, User).outerjoin(User, AuditLog.user_id == User.id)
+                                      .order_by(AuditLog.created_at.desc()).offset((page-1)*50).limit(50))]
