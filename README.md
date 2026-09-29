@@ -87,12 +87,12 @@ Abra `http://localhost:3000`. `NEXT_PUBLIC_API_URL` aponta para a API, por padr�
 ## Uso
 
 1. Entre com usuário e senha cadastrados pelo administrador.
-2. Escolha Novo boletim, informe e-mail de recebimento e número manual.
+2. Escolha Novo boletim, informe e-mail de recebimento e os dados da ocorrência; o número será automático.
 3. Preencha local, envolvidos, histórico, material, efetivo e entrega.
 4. Revise os dados na última etapa e confirme a emissão.
 5. Acompanhe os status reais e baixe o PDF.
 
-O rascunho incompleto é salvo automaticamente no navegador, separado por usuário e boletim. Dura até sete dias e é removido ao sair explicitamente ou emitir. Salvar no servidor exige o número do BO e permite outros campos incompletos. Boletins emitidos podem ser corrigidos por ADMIN, com motivo, confirmação e preservação de todas as versões do PDF.
+O rascunho incompleto é salvo automaticamente no navegador, separado por usuário e boletim. Dura até sete dias e é removido ao sair explicitamente ou emitir. Salvar no servidor permite rascunhos incompletos e sem número. Boletins emitidos podem ser corrigidos por ADMIN, com motivo, confirmação e preservação de todas as versões do PDF.
 
 O JWT permanece apenas em memória e expira em 30 minutos. Após recarregar a página, faça login novamente para recuperar o rascunho local. Não há renovação automática nem recuperação de senha por e-mail; o administrador pode redefini-la em Administração → Usuários.
 
@@ -107,7 +107,7 @@ O JWT permanece apenas em memória e expira em 30 minutos. Após recarregar a p�
 | Reenviar e-mail | Não | Sim |
 | Gerenciar usuários / auditoria | Não | Sim |
 
-A regra de consulta conservadora precisa de homologação institucional. O número do BO é informado manualmente e tem unicidade global. E-mail institucional vem exclusivamente da configuração do backend; `battalionEmail` enviado pelo cliente é ignorado.
+A regra de consulta conservadora precisa de homologação institucional. O protocolo é gerado na primeira emissão em America/Fortaleza, com sequência diária atômica e unicidade global. E-mail institucional vem exclusivamente da configuração do backend; `battalionEmail` enviado pelo cliente é ignorado.
 
 ## PDF
 
@@ -226,3 +226,9 @@ Autenticação GitHub deve ser fornecida pelo Git/credential manager do ambiente
 ## Integração RTK / Codex
 
 `rtk init --codex` foi aplicado ao projeto por solicitação do usuário. Criou `RTK.md`, uma referência em `AGENTS.md` e `.codex/hooks.json`. O RTK precisa estar instalado e disponível no PATH. Reinicie o Codex e aprove a confiança no hook quando solicitado. A configuração não modifica permissões de sandbox nem habilita histórico global automaticamente.
+
+## Emissão e integridade documental
+
+Consulte [numeração, idempotência, prévia e verificação](docs/protocol-and-verification.md) e [resumo dos e-mails](docs/email-summary.md). A interface inclui filtros no servidor, Meus rascunhos, relatório administrativo e scroll ao cabeçalho do envolvido. `FRONTEND_URL` no backend define o destino do QR; por padrão já usa https://bpm24online.vercel.app. O hash é calculado depois de finalizar o PDF e não é inserido no próprio arquivo.
+
+Resultados desta etapa: [validação de protocolos e integridade](docs/validation-protocol-20260929.md).

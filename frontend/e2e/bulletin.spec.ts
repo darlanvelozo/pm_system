@@ -8,16 +8,28 @@ async function login(page: Page, account = admin) {
   await page.goto('/');
   await page.getByLabel('Usuário', {exact: true}).fill(account.username);
   await page.getByLabel('Senha', {exact: true}).fill(account.password);
-  await page.getByRole('button', {name:'Acessar sistema'}).click();
+  const submit = async () => {
+    const response = page.waitForResponse(r=>r.url().endsWith('/api/auth/login') && r.request().method()==='POST');
+    await page.getByRole('button', {name:'Acessar sistema'}).click();
+    return response;
+  };
+  let response = await submit();
+  if (response.status() === 429) {
+    // Respect the production limiter when this suite logs in repeatedly.
+    const seconds = Number(response.headers()['retry-after'] || 60);
+    await new Promise(resolve => setTimeout(resolve, (seconds + 1) * 1000));
+    response = await submit();
+  }
+  expect(response.status()).toBe(200);
   await expect(page.getByRole('heading', {name:'Painel de boletins'})).toBeVisible();
+  return response.json();
 }
 async function forward(page: Page, count = 1) {
   for (let i=0;i<count;i++) await page.getByRole('button', {name:'Continuar', exact:true}).click();
 }
-async function newBo(page: Page, number: string, count: number) {
+async function newBo(page: Page, count: number, doubleClick = false) {
   await page.getByRole('button', {name:'Novo boletim', exact:true}).last().click();
   await page.getByLabel(/E-mail para recebimento/).fill('recipient@example.com');
-  await page.getByLabel(/Nº do BO/).fill(number);
   await page.getByLabel(/Tipo de ocorrência/).fill('Teste fictício de integração');
   await page.getByLabel('Data *', {exact:true}).fill('2026-01-01');
   await page.getByLabel('Hora *', {exact:true}).fill('12:30');
@@ -32,9 +44,21 @@ async function newBo(page: Page, number: string, count: number) {
   await forward(page);
   await page.getByLabel(/Histórico da ocorrência/).fill('Narrativa fictícia para teste completo.');
   await forward(page,4);
-  await page.getByRole('button', {name:'Confirmar e gerar boletim'}).click();
+  if(doubleClick) {
+    const response = page.waitForResponse(r=>r.url().endsWith('/preview-pdf'));
+    await page.getByRole('button',{name:'Visualizar prévia do PDF'}).click();
+    expect((await response).status()).toBe(200);
+    await expect(page.getByRole('dialog')).toBeVisible();
+    await page.getByRole('button',{name:'Fechar'}).click();
+  }
+  const emitted = page.waitForResponse(r => r.url().endsWith('/api/bo') && r.request().method() === 'POST');
+  if(doubleClick) await page.getByRole('button', {name:'Confirmar e gerar boletim'}).evaluate(button => {(button as HTMLButtonElement).click();(button as HTMLButtonElement).click();});
+  else await page.getByRole('button', {name:'Confirmar e gerar boletim'}).click();
   await expect(page.getByRole('heading', {name:'Boletim gerado com sucesso'})).toBeVisible();
   await expect(page.getByText('Falhou', {exact:true})).toHaveCount(2);
+  const result = await (await emitted).json();
+  expect(result.bo_number).toMatch(/^\d{8}-\d{2,}$/);
+  return result.bo_number as string;
 }
 test('admin cria operador; operador emite; admin revisa, cancela, remove e consulta auditoria', async ({page}) => {
   await login(page);
@@ -44,9 +68,9 @@ test('admin cria operador; operador emite; admin revisa, cancela, remove e consu
   await page.getByLabel(/Senha inicial/).fill(operator.password);
   await page.getByRole('button', {name:'Criar usuário', exact:true}).click();
   await expect(page.getByText('Usuário criado. Ele já pode entrar com o login e a senha informados.')).toBeVisible();
+  await page.getByRole('button',{name:'Sair',exact:true}).click();
   await login(page,operator);
-  const number = `E2E-DYNAMIC-${stamp}`;
-  await newBo(page,number,2);
+  const number = await newBo(page,2);
   await expect(page.getByText(/Registrado por: João Teste Operador/)).toBeVisible();
   await login(page);
   await page.getByRole('button', {name:number,exact:true}).click();
@@ -133,21 +157,21 @@ test('instalação respeita recusa; atualização só recarrega após confirmaç
   await page.evaluate(() => window.dispatchEvent(new Event('beforeinstallprompt', {cancelable:true})));
   await expect(page.getByRole('button',{name:'Instalar BO Online'})).toHaveCount(0);
   await page.getByRole('button',{name:'Novo boletim',exact:true}).last().click();
-  await page.getByLabel(/Nº do BO/).fill('DRAFT-BEFORE-UPDATE');
+  await page.getByLabel('Descrição breve da ocorrência').fill('DRAFT-BEFORE-UPDATE');
   const path = 'public/sw.js';
   const original = await readFile(path,'utf8');
   try {
     await writeFile(path, original + `\n// Local E2E update ${Date.now()}\n`);
     await page.evaluate(async () => { const registration = await navigator.serviceWorker.ready; await registration.update(); });
     await expect(page.getByRole('button',{name:'Atualizar',exact:true})).toBeVisible({timeout:30000});
-    await expect(page.getByLabel(/Nº do BO/)).toHaveValue('DRAFT-BEFORE-UPDATE');
+    await expect(page.getByLabel('Descrição breve da ocorrência')).toHaveValue('DRAFT-BEFORE-UPDATE');
     await page.getByRole('button',{name:'Atualizar',exact:true}).click();
     await expect(page.getByRole('dialog')).toBeVisible();
     await page.getByRole('button',{name:'Salvei meu trabalho, atualizar'}).click();
     await expect(page.getByRole('button',{name:'Acessar sistema'})).toBeVisible();
     await login(page);
     await page.getByRole('button',{name:'Novo boletim',exact:true}).last().click();
-    await expect(page.getByLabel(/Nº do BO/)).toHaveValue('DRAFT-BEFORE-UPDATE');
+    await expect(page.getByLabel('Descrição breve da ocorrência')).toHaveValue('DRAFT-BEFORE-UPDATE');
   } finally {
     await writeFile(path, original);
   }
@@ -171,8 +195,7 @@ test('modo standalone não oferece instalação novamente', async ({page}) => {
 test('mobile registra trinta envolvidos e recupera todos do servidor', async ({page}) => {
   await page.setViewportSize({width:390,height:844});
   await login(page);
-  const number = `E2E-THIRTY-${stamp}`;
-  await newBo(page,number,30);
+  const number = await newBo(page,30);
   await expect(page.getByText('Pessoa Ficticia 29',{exact:true})).toBeVisible();
   const download = page.waitForEvent('download');
   await page.getByRole('button',{name:'Baixar PDF',exact:true}).click();
@@ -181,4 +204,63 @@ test('mobile registra trinta envolvidos e recupera todos do servidor', async ({p
   await page.getByRole('button',{name:`Abrir boletim ${number}`,exact:true}).click();
   for(let i=0;i<30;i++) await expect(page.getByText(`Pessoa Ficticia ${i}`,{exact:true})).toBeVisible();
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 2)).toBe(true);
+});
+
+test('prévia, clique duplo e verificação após login', async ({page}) => {
+  await login(page);
+  let attempts = 0;
+  page.on('request',r=>{if(r.method()==='POST' && r.url().endsWith('/api/bo') && r.postDataJSON()?.emit) attempts++;});
+  const number = await newBo(page,3,true);
+  expect(attempts).toBe(1);
+  const verification = await page.getByRole('link',{name:'Verificar documento'}).getAttribute('href');
+  await page.goto(verification!);
+  await expect(page.getByRole('button',{name:'Acessar sistema'})).toBeVisible();
+  await page.getByLabel('Usuário',{exact:true}).fill(admin.username);
+  await page.getByLabel('Senha',{exact:true}).fill(admin.password);
+  await page.getByRole('button',{name:'Acessar sistema'}).click();
+  await expect(page.getByRole('heading',{name:'Verificação documental'})).toBeVisible();
+  await expect(page.getByText(`Nº do BO: ${number}`,{exact:true})).toBeVisible();
+  await expect(page.getByText('Documento corresponde ao registro armazenado.',{exact:true})).toBeVisible();
+  await expect(page.getByText('Pessoa Ficticia 0',{exact:true})).toHaveCount(0);
+});
+
+for(const width of [390,1280]) test(`scroll dos envolvidos mantém cabeçalho visível em ${width}px`, async ({page})=>{
+  await page.setViewportSize({width,height:844});
+  await login(page);
+  await page.getByRole('button',{name:'Novo boletim',exact:true}).last().click();
+  await page.getByLabel(/E-mail para recebimento/).fill('recipient@example.com');
+  await page.getByLabel(/Tipo de ocorrência/).fill('Teste de scroll');
+  await page.getByLabel('Data *',{exact:true}).fill('2026-01-01');
+  await page.getByLabel('Hora *',{exact:true}).fill('12:00');
+  await forward(page);
+  await page.getByLabel(/Logradouro/).fill('Rua fictícia');
+  await page.getByLabel(/Município/).fill('Cidade fictícia');
+  await forward(page);
+  for(const letter of ['A','B','C']) {
+    if(letter!=='A') await page.getByRole('button',{name:'+ Adicionar envolvido',exact:true}).click();
+    const header = page.getByRole('heading',{name:`Envolvido ${letter}`,exact:true});
+    await expect.poll(async()=>{const box=await header.boundingBox();return !!box && box.y>=50 && box.y<250;}).toBe(true);
+    await page.getByLabel('Nome',{exact:true}).fill(`Pessoa ${letter}`);
+    await page.getByLabel('Observação',{exact:true}).fill('Campo no final do formulário');
+  }
+  await page.getByRole('button',{name:'Editar envolvido A',exact:true}).click();
+  await expect.poll(async()=>{const box=await page.getByRole('heading',{name:'Envolvido A',exact:true}).boundingBox();return !!box && box.y>=50 && box.y<250;}).toBe(true);
+  await expect(page.getByLabel('Nome',{exact:true})).toHaveValue('Pessoa A');
+});
+
+test('rascunho entre dispositivos preserva conflito e permite recarregar', async ({page})=>{
+  const session = await login(page);
+  await page.getByRole('button',{name:'Novo boletim',exact:true}).last().click();
+  await page.getByLabel('Descrição breve da ocorrência',{exact:false}).fill('Rascunho entre dispositivos');
+  const saved = page.waitForResponse(r=>r.url().endsWith('/api/bo') && r.request().method()==='POST');
+  await page.getByRole('button',{name:'Salvar no servidor',exact:true}).click();
+  const draft = await (await saved).json();
+  expect(draft.bo_number).toBeNull();
+  const fromOtherDevice = await page.request.put(`http://localhost:8000/api/bo/${draft.id}`,{headers:{Authorization:`Bearer ${session.access_token}`},data:{data:{...draft.data,occurrence_summary:'Alterado em outro dispositivo'},version:draft.version,emit:false}});
+  expect(fromOtherDevice.status()).toBe(200);
+  await page.getByLabel('Descrição breve da ocorrência',{exact:false}).fill('Alteração local concorrente');
+  await page.getByRole('button',{name:'Salvar no servidor',exact:true}).click();
+  await expect(page.getByText(/Este rascunho foi alterado em outro dispositivo/)).toBeVisible();
+  await page.getByRole('button',{name:'Recarregar versão do servidor'}).click();
+  await expect(page.getByLabel('Descrição breve da ocorrência',{exact:false})).toHaveValue('Alterado em outro dispositivo');
 });
