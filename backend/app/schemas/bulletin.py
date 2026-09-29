@@ -2,7 +2,7 @@ from datetime import date as Date, time as Time
 from enum import StrEnum
 from typing import Literal
 from uuid import UUID
-from pydantic import BaseModel, ConfigDict, EmailStr, Field, model_validator
+from pydantic import BaseModel, ConfigDict, EmailStr, Field, model_validator, field_validator
 
 
 class BulletinType(StrEnum):
@@ -81,6 +81,20 @@ class Person(FormModel):
     injury_notes: str = ''
     observations: str = ''
     extras: TwoExtras | None = None
+
+    @field_validator('cpf')
+    @classmethod
+    def valid_cpf(cls, value):
+        if not value:
+            return value
+        digits = ''.join(c for c in value if c.isdigit())
+        if len(digits) != 11 or len(set(digits)) == 1 or any(c not in '0123456789.-' for c in value):
+            raise ValueError('CPF inválido')
+        for length in (9, 10):
+            check = (sum(int(digits[i]) * (length + 1 - i) for i in range(length)) * 10 % 11) % 10
+            if check != int(digits[length]):
+                raise ValueError('CPF inválido')
+        return value
 
 
 class Location(FormModel):

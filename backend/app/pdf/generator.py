@@ -12,11 +12,14 @@ def generate_pdf(data, registered_by=None):
     def footer(canvas, document):
         canvas.saveState()
         canvas.setFont('Helvetica', 8)
-        canvas.drawString(16, A4[1]-18, 'BOLETIM DE OCORRENCIA - PMMA')
-        canvas.drawString(16, A4[1]-30, f'No DO BO: {data.bo_number}' + (' - CONTINUACAO - ENVOLVIDOS / REGISTRO' if document.page > 1 else ''))
+        from reportlab.lib.utils import simpleSplit
+        canvas.drawString(16, A4[1]-14, 'BOLETIM DE OCORRÊNCIA – PMMA')
+        if document.page > 1:
+            canvas.drawRightString(A4[0]-16, A4[1]-14, 'CONTINUAÇÃO — ENVOLVIDOS / REGISTRO')
+        for index, line in enumerate(simpleSplit(f'Nº DO BO: {data.bo_number}', 'Helvetica', 8, A4[0]-32)):
+            canvas.drawString(16, A4[1]-26-index*9, line)
         canvas.setFont('Helvetica', 7)
         if registered_by:
-            from reportlab.lib.utils import simpleSplit
             lines = simpleSplit(f'Registrado por: {registered_by}', 'Helvetica', 7, A4[0]-130)
             for index, line in enumerate(reversed(lines)):
                 canvas.drawString(12, 10 + index * 8, line)

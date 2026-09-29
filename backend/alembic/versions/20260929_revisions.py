@@ -60,4 +60,15 @@ def upgrade():
 
 
 def downgrade():
-    raise RuntimeError('Revisões preservadas: reversão exige plano explícito de exportação e restauração.')
+    if op.get_bind().scalar(sa.text('SELECT count(*) FROM bulletins')):
+        raise RuntimeError('Revisões preservadas: reversão com boletins exige plano explícito de exportação e restauração.')
+    op.drop_index('ix_bulletin_revisions_bulletin_id', table_name='bulletin_revisions')
+    op.drop_table('bulletin_revisions')
+    with op.batch_alter_table('bulletins') as batch:
+        for prefix in ('deleted', 'edited'):
+            batch.drop_constraint('fk_bulletins_' + prefix, type_='foreignkey')
+            batch.drop_column(prefix + '_at')
+            batch.drop_column(prefix + '_by')
+        for name in ('registered_by_name_snapshot', 'registered_by_username_snapshot', 'lifecycle',
+                     'current_revision', 'deletion_reason', 'edit_reason'):
+            batch.drop_column(name)

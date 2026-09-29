@@ -80,3 +80,33 @@ def test_partial_draft_and_conflict(client, accounts, payload):
     payload['history'] = 'Edição em outro dispositivo'
     assert client.put(url, headers=h, json={'data': payload, 'version': r['version'], 'emit': False}).status_code == 200
     assert client.put(url, headers=h, json={'data': payload, 'version': r['version'], 'emit': False}).status_code == 409
+
+
+def test_eight_to_three_preserves_identity_and_previous_pdf(client, accounts, payload):
+    headers = accounts['admin']['headers']
+    payload['people'] = [{'name': f'Fictional person {i}'} for i in range(8)]
+    created = client.post('/api/bo', headers=headers, json={'data': payload, 'emit': True}).json()
+    path = '/api/bo/' + created['id']
+    current = client.get(path, headers=headers).json()
+    old = client.get(path + '/pdf', headers=headers).content
+    data = current['data']
+    data['people'] = data['people'][5:]
+    response = client.post(path + '/revise', headers=headers, json={
+        'data': data, 'version': current['version'], 'reason': 'Correction with three retained people'})
+    assert response.status_code == 200, response.text
+    assert response.json()['data']['people'] == data['people']
+    text = pdf_text(client.get(path + '/pdf', headers=headers))
+    assert all(f'Fictional person {i}' in text for i in range(5, 8))
+    assert all(f'Fictional person {i}' not in text for i in range(5))
+    assert client.get(path + '/revisions/1/pdf', headers=headers).content == old
+
+
+@pytest.mark.parametrize('cpf,valid', [('', True), ('111.111.111-11', False), ('123', False), ('529.982.247-25', True)])
+def test_optional_cpf_validation(cpf, valid):
+    from pydantic import ValidationError
+    from app.schemas.bulletin import Person
+    if valid:
+        assert Person(cpf=cpf).cpf == cpf
+    else:
+        with pytest.raises(ValidationError):
+            Person(cpf=cpf)

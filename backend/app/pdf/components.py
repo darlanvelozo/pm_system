@@ -68,9 +68,7 @@ def involved(person, position, extra=False):
         row([f'Características Marcantes: {p.distinguishing_features}']),
         row(['Lesão: ' + checks(['Leve', 'Grave', 'Gravíssima', 'Ileso'], [p.injury_level]), f'Obs: {p.injury_notes}'], [.56, .44])]
     items.append(row([f'Observação: {p.observations}']))
-    if not extra:
-        items.append(row([f'Observação: {p.observations}']))
-    else:
+    if extra:
         from app.schemas.bulletin import TwoExtras
         e = p.extras or TwoExtras()
         items.extend([row([f'Vestimentas: {e.clothing}']),
