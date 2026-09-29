@@ -160,6 +160,9 @@ def users(page: int = Query(1, ge=1), user=Depends(admin), db: Session = Depends
 
 @router.post('/admin/users', status_code=201)
 def create_user(data: UserCreate, user=Depends(admin), db: Session = Depends(get_db)):
+    identity = data.username or str(data.email).lower()
+    if db.scalar(select(User.id).where((User.username == identity) | (User.email == identity))):
+        raise HTTPException(409, 'Nome de usuário já cadastrado.')
     new = User(username=data.username or str(data.email).lower(), email=str(data.email).lower() if data.email else None, name=data.name, password_hash=hasher.hash(data.password), role=data.role)
     db.add(new)
     audit(db, user.id, 'USER_CREATED')
@@ -169,17 +172,32 @@ def create_user(data: UserCreate, user=Depends(admin), db: Session = Depends(get
 
 @router.patch('/admin/users/{user_id}')
 def update_user(user_id: uuid.UUID, data: UserUpdate, user=Depends(admin), db: Session = Depends(get_db)):
+    # Serialize administrator changes so concurrent requests cannot remove the last admin.
+    db.scalars(select(User).where(User.role == 'ADMIN').order_by(User.id).with_for_update()).all()
     target = db.get(User, user_id)
     if not target:
         raise HTTPException(404, 'Usuário não encontrado')
     if target.id == user.id and (data.active is False or data.role == 'OPERADOR'):
         raise HTTPException(409, 'Não é permitido remover o próprio acesso administrativo')
+    if target.role == 'ADMIN' and target.active and (data.active is False or data.role == 'OPERADOR'):
+        if db.scalar(select(func.count()).select_from(User).where(User.role == 'ADMIN', User.active.is_(True))) <= 1:
+            raise HTTPException(409, 'Mantenha pelo menos um administrador ativo.')
+    if data.username and db.scalar(select(User.id).where(User.id != target.id, (User.username == data.username) | (User.email == data.username))):
+        raise HTTPException(409, 'Nome de usuário já cadastrado.')
+    if data.name is not None:
+        target.name = data.name.strip()
+        if not target.name:
+            raise HTTPException(422, 'Informe o nome completo.')
+    if data.username is not None:
+        target.username = data.username
     if data.active is not None:
         target.active = data.active
+        audit(db, user.id, 'USER_ACTIVATED' if data.active else 'USER_DEACTIVATED')
     if data.role is not None:
         target.role = data.role
     if data.password:
         target.password_hash = hasher.hash(data.password)
+        audit(db, user.id, 'USER_PASSWORD_RESET')
     audit(db, user.id, 'USER_UPDATED')
     save(db)
     return user_view(target)
@@ -187,8 +205,8 @@ def update_user(user_id: uuid.UUID, data: UserUpdate, user=Depends(admin), db: S
 
 @router.get('/admin/audit')
 def audit_events(page: int = Query(1, ge=1), user=Depends(admin), db: Session = Depends(get_db)):
-    return [{'id': str(a.id), 'user_id': str(a.user_id), 'user_name': actor.name if actor else None,
-             'username': (actor.username or actor.email) if actor else None,
+    return [{'id': str(a.id), 'user_id': str(a.user_id), 'user_name': a.actor_name_snapshot or (actor.name if actor else None),
+             'username': a.actor_username_snapshot or ((actor.username or actor.email) if actor else None),
              'bulletin_id': str(a.bulletin_id) if a.bulletin_id else None,
              'action': a.action, 'result': a.result, 'created_at': a.created_at}
             for a, actor in db.execute(select(AuditLog, User).outerjoin(User, AuditLog.user_id == User.id)

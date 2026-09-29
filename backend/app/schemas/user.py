@@ -36,6 +36,18 @@ class UserCreate(BaseModel):
 
 class UserUpdate(BaseModel):
     model_config = ConfigDict(extra='forbid')
+    name: str | None = Field(default=None, min_length=1, max_length=150)
+    username: str | None = Field(default=None, min_length=3, max_length=64, pattern=r'^[a-zA-Z0-9_.-]+$')
     active: bool | None = None
     role: Literal['ADMIN', 'OPERADOR'] | None = None
     password: str | None = Field(default=None, min_length=12, max_length=128)
+
+    @field_validator('password', mode='before')
+    @classmethod
+    def empty_password(cls, value):
+        return value or None
+
+    @field_validator('username')
+    @classmethod
+    def normalize(cls, value):
+        return value.lower() if value else value
