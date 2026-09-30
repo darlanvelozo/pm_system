@@ -20,7 +20,7 @@ class UserCreate(BaseModel):
     email: EmailStr | None = None
     name: str = Field(min_length=1, max_length=150)
     password: str = Field(min_length=12, max_length=128)
-    role: Literal['ADMIN', 'OPERADOR'] = 'OPERADOR'
+    role: Literal['ADMIN', 'OPERADOR', 'GERADOR'] = 'OPERADOR'
 
     @field_validator('username')
     @classmethod
@@ -39,7 +39,7 @@ class UserUpdate(BaseModel):
     name: str | None = Field(default=None, min_length=1, max_length=150)
     username: str | None = Field(default=None, min_length=3, max_length=64, pattern=r'^[a-zA-Z0-9_.-]+$')
     active: bool | None = None
-    role: Literal['ADMIN', 'OPERADOR'] | None = None
+    role: Literal['ADMIN', 'OPERADOR', 'GERADOR'] | None = None
     password: str | None = Field(default=None, min_length=12, max_length=128)
 
     @field_validator('password', mode='before')

@@ -13,6 +13,8 @@ def accessible(db, bulletin_id, user, lock=False):
     bulletin = db.scalar(query)
     if not bulletin:
         raise HTTPException(404, 'Boletim não encontrado')
+    if user.role == 'GERADOR' and bulletin.status != 'DRAFT':
+        raise HTTPException(403, 'Acesso permitido somente ao rascunho ativo.')
     return bulletin
 
 

@@ -44,3 +44,9 @@ def admin(user: User = Depends(current_user)):
     if user.role != 'ADMIN':
         raise HTTPException(403, 'Acesso administrativo necessário')
     return user
+
+
+def operator(user: User = Depends(current_user)):
+    if user.role not in ('ADMIN', 'OPERADOR'):
+        raise HTTPException(403, 'Este perfil permite somente gerar novos boletins.')
+    return user
