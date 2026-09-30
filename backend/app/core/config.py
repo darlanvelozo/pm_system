@@ -31,6 +31,9 @@ class Settings(BaseSettings):
     token_minutes: int = 30
     pdf_asset_dir: str = 'app/pdf/assets'
     frontend_url: str = 'https://bpm24online.vercel.app'
+    report_signatory_name: str = ''
+    report_signatory_rank: str = ''
+    report_signatory_title: str = ''
 
     @field_validator('jwt_secret')
     @classmethod
