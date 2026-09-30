@@ -232,3 +232,6 @@ Autenticação GitHub deve ser fornecida pelo Git/credential manager do ambiente
 Consulte [numeração, idempotência, prévia e verificação](docs/protocol-and-verification.md) e [resumo dos e-mails](docs/email-summary.md). A interface inclui filtros no servidor, Meus rascunhos, relatório administrativo e scroll ao cabeçalho do envolvido. `FRONTEND_URL` no backend define o destino do QR; por padrão já usa https://bpm24online.vercel.app. O hash é calculado depois de finalizar o PDF e não é inserido no próprio arquivo.
 
 Resultados desta etapa: [validação de protocolos e integridade](docs/validation-protocol-20260929.md).
+# Relatórios Analíticos e Usuário simples
+
+A aplicação também possui Relatórios Analíticos, com sequência anual independente, prévia, revisões e envio de PDF. O perfil GERADOR permite apenas novos BOs e rascunhos próprios. Consulte a [matriz de permissões, fontes do formulário e configuração da autoridade](docs/analytical-reports.md).

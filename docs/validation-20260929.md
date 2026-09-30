@@ -2,6 +2,8 @@
 
 Etapa posterior: [validação de protocolos, prévia e integridade](validation-protocol-20260929.md). Este documento preserva o registro da primeira etapa.
 
+Etapa de 30/09: [GERADOR e Relatórios Analíticos](validation-20260930.md).
+
 ## Estado inicial e correções
 
 Foi mantida a branch main e a arquitetura Next.js/FastAPI/PostgreSQL. A base já tinha criação de usuários e consulta administrativa, mas a edição não abrangia nome/login, não havia identidade histórica independente de renomeações e o bootstrap podia voltar a sincronizar dados do administrador. O formulário ainda usava perfis rígidos de dois/quatro envolvidos; emitidos não tinham revisão preservada e o frontend não tinha PWA.
