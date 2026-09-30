@@ -1,6 +1,7 @@
 import uuid
 import hashlib
 import copy
+import re
 from io import BytesIO
 import pytest
 from pypdf import PdfReader
@@ -10,6 +11,12 @@ from app.pdf.layout import position_label
 def pdf_text(response):
     assert response.status_code == 200
     return '\n'.join(p.extract_text() for p in PdfReader(BytesIO(response.content)).pages)
+
+
+def assert_commander_label(text):
+    normalized = ' '.join(text.split())
+    assert 'Posto/Graduação/Nome Cmt:' in normalized
+    assert not re.search(r'\bPosto\s*/\s*Nome\s+(?:Cmt|Comandante)\s*:', normalized, re.IGNORECASE)
 
 
 @pytest.mark.parametrize('count', [1, 2, 3, 4, 5, 8, 12, 30])
@@ -23,6 +30,7 @@ def test_dynamic_pdf(client, accounts, payload, count):
     assert len(record['data']['people']) == count
     assert len(set(p['id'] for p in record['data']['people'])) == count
     text = pdf_text(client.get(f'/api/bo/{record["id"]}/pdf', headers=h))
+    assert_commander_label(text)
     for i in range(count):
         assert f'Pessoa Ficticia {i:02d}' in text
         assert f'Roupa teste {i:02d}' in text
@@ -58,6 +66,7 @@ def test_revision_growth_shrink_and_soft_removal(client, accounts, payload, monk
     assert [p['id'] for p in r['data']['people'][:2]] == original_ids
     assert client.get(path + '/revisions/1/pdf', headers=admin).content == old_pdf
     text = pdf_text(client.get(path + '/pdf', headers=admin))
+    assert_commander_label(text)
     assert all(f'Novo {i}' in text for i in range(5))
     assert client.post(path + '/revise', headers=admin, json=body).status_code == 409
     data = copy.deepcopy(r['data'])
@@ -67,6 +76,7 @@ def test_revision_growth_shrink_and_soft_removal(client, accounts, payload, monk
     assert r['data']['people'] == retained
     assert r['current_revision'] == 3
     text = pdf_text(client.get(path + '/pdf', headers=admin))
+    assert_commander_label(text)
     assert 'Original A' not in text and 'Novo 0' not in text and 'Novo 4' in text
     assert len(client.get(path + '/revisions', headers=admin).json()) == 3
     assert client.post(path + '/remove', headers=admin, json={'reason': 'Teste de remoção'}).status_code == 200
