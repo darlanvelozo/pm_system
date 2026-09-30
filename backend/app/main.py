@@ -5,6 +5,7 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from app.api.routes import router
+from app.api.analytical_reports import router as reports_router
 from app.core.config import settings
 from app.core.middleware import SecurityMiddleware
 
@@ -20,6 +21,7 @@ app = FastAPI(title='BO Online 24º BPM', lifespan=lifespan, docs_url='/docs' if
 app.add_middleware(SecurityMiddleware)
 app.add_middleware(CORSMiddleware, allow_origins=cfg.origins, allow_methods=['GET', 'POST', 'PUT', 'PATCH', 'OPTIONS'], allow_headers=['Authorization', 'Content-Type', 'Idempotency-Key'], expose_headers=['Content-Disposition'])
 app.include_router(router)
+app.include_router(reports_router)
 
 
 @app.exception_handler(RequestValidationError)

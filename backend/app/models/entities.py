@@ -112,6 +112,7 @@ class AuditLog(Base):
     actor_name_snapshot: Mapped[str | None] = mapped_column(String(150))
     actor_username_snapshot: Mapped[str | None] = mapped_column(String(254))
     bulletin_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey('bulletins.id'))
+    report_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey('analytical_reports.id'))
     action: Mapped[str] = mapped_column(String(80))
     result: Mapped[str] = mapped_column(String(30), default='SUCCESS')
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now, index=True)

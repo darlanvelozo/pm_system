@@ -1,6 +1,7 @@
 from alembic import context
 from app.db.session import Base, engine
 from app.models import entities  # noqa: F401
+from app.models import analytical_report  # noqa: F401
 
 if context.is_offline_mode():
     context.configure(url=engine.url, target_metadata=Base.metadata, literal_binds=True)
