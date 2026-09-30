@@ -3,8 +3,75 @@ import { readFile, writeFile } from 'node:fs/promises';
 const admin = { username: 'e2e@example.com', password: 'Fictional-e2e-password-2026' };
 const stamp = Date.now();
 const operator = {username: `joao.teste.${stamp}`, password: 'Fictional-e2e-password-2026'};
+
+test('admin cria GERADOR; login limitado, emissão e bloqueios reais',async({page})=>{
+  await page.setViewportSize({width:390,height:844});
+  await login(page);
+  await page.getByRole('button',{name:'Menu',exact:true}).click();
+  await page.getByRole('button',{name:'Usuários',exact:true}).click();
+  const generator={username:`gerador.${stamp}`,password:'Fictional-generator-2026'};
+  await page.getByLabel('Nome completo',{exact:true}).fill('Gerador Fictício');
+  await page.getByLabel('Nome de usuário (login)').fill(generator.username);
+  await page.getByLabel(/Senha inicial/).fill(generator.password);
+  await page.getByRole('combobox',{name:'Perfil',exact:true}).selectOption('GERADOR');
+  await page.getByRole('button',{name:'Criar usuário',exact:true}).click();
+  await expect(page.getByText('Usuário criado. Ele já pode entrar com o login e a senha informados.')).toBeVisible();
+  await page.getByRole('button',{name:'Sair',exact:true}).click();
+  const session=await login(page,generator,true);
+  await expect(page.getByRole('button',{name:'Painel de boletins',exact:true})).toHaveCount(0);
+  await expect(page.getByRole('button',{name:'Relatórios Analíticos',exact:true})).toHaveCount(0);
+  let issuedId='';
+  page.on('response',async response=>{if(response.url().endsWith('/api/bo')&&response.request().method()==='POST')issuedId=(await response.json()).id;});
+  await newBo(page,3,true,true);
+  expect(issuedId).toBeTruthy();
+  for(const path of ['/api/bo',`/api/bo/${issuedId}`,`/api/bo/${issuedId}/pdf`,'/api/analytical-reports','/api/admin/users']){
+    const r=await page.request.get(`http://localhost:8000${path}`,{headers:{Authorization:`Bearer ${session.access_token}`}});expect(r.status()).toBe(403);
+  }
+  await expect(page.getByRole('button',{name:'Baixar PDF',exact:true})).toHaveCount(0);
+});
+
+test('relatório analítico: prévia, emissão, revisão, PDF, reenvio, cancelamento e remoção',async({page})=>{
+  await login(page);
+  await page.getByRole('button',{name:'Novo Relatório Analítico',exact:true}).first().click();
+  await page.getByLabel('E-mail para recebimento').fill('fictional@example.com');
+  await page.getByLabel('Código/Tipo de Ocorrência').fill('TESTE ANALÍTICO FICTÍCIO');
+  await forward(page);
+  await page.getByLabel(/^Local \*/).fill('Local inteiramente fictício');
+  await page.getByLabel('Data da ocorrência').fill('2026-09-30');
+  await page.getByLabel('Hora da ocorrência').fill('12:30');
+  await forward(page);
+  await page.getByLabel('Vítima(s)').fill('Pessoa fictícia para teste');
+  await forward(page);
+  for(const label of ['EVADIU-SE','SAMU','ICRIM'])await page.getByLabel(label,{exact:false}).selectOption('NÃO');
+  await forward(page,2);
+  await page.getByLabel('RELATO DA OCORRÊNCIA').fill('Relato fictício para teste integrado');
+  await forward(page);
+  await page.getByLabel('PROVIDÊNCIAS ADOTADAS').fill('Providências fictícias para teste integrado');
+  await page.getByLabel('Local de emissão (município)').fill('Cidade Fictícia');
+  await page.getByLabel('Data de emissão').fill('2026-09-30');
+  await forward(page);
+  const preview=page.waitForResponse(r=>r.url().endsWith('/analytical-reports/preview-pdf'));
+  await page.getByRole('button',{name:'Visualizar prévia do relatório'}).click();expect((await preview).status()).toBe(200);
+  await expect(page.getByRole('dialog')).toBeVisible();await page.getByRole('button',{name:'Fechar'}).click();
+  const emitted=page.waitForResponse(r=>r.url().includes('/analytical-reports/')&&r.url().endsWith('/emit'));
+  await page.getByRole('button',{name:'Emitir Relatório Analítico',exact:true}).evaluate(b=>{(b as HTMLButtonElement).click();(b as HTMLButtonElement).click();});
+  const response=await emitted;expect(response.status()).toBe(200);const report=await response.json();expect(report.report_number).toMatch(/^\d+\/\d{4}$/);
+  await expect(page.getByRole('status').filter({hasText:'Emitido · Versão 1'})).toBeVisible();
+  await expect(page.getByText('Falhou',{exact:true})).toHaveCount(2);
+  const download=page.waitForEvent('download');await page.getByRole('button',{name:'Baixar PDF do relatório'}).click();await(await download).saveAs('../.local/generated/analytical-e2e-v1.pdf');
+  await page.getByRole('button',{name:'Corrigir relatório emitido'}).click();
+  await forward(page,5);await page.getByLabel('RELATO DA OCORRÊNCIA').fill('Relato fictício corrigido, versão dois');await forward(page,2);
+  await page.getByRole('button',{name:'Confirmar revisão do relatório',exact:true}).click();await page.getByLabel('Motivo da revisão').fill('Correção fictícia de teste');await page.getByRole('button',{name:'Confirmar correção',exact:true}).click();
+  await expect(page.getByRole('status').filter({hasText:'Emitido · Versão 2'})).toBeVisible();
+  await page.getByRole('button',{name:'Histórico de versões do relatório'}).click();await expect(page.getByRole('heading',{name:'Versão 1',exact:true})).toBeVisible();await expect(page.getByRole('heading',{name:'Versão 2',exact:true})).toBeVisible();
+  await page.getByRole('button',{name:'Reenviar relatório',exact:true}).click();await page.getByLabel('Destino').selectOption('recipient');await page.getByRole('button',{name:'Confirmar ação'}).click();await expect(page.getByRole('dialog')).toHaveCount(0);
+  await page.getByRole('button',{name:'Cancelar relatório',exact:true}).click();await page.getByLabel('Motivo',{exact:true}).fill('Cancelamento fictício');await page.getByRole('button',{name:'Confirmar ação'}).click();await expect(page.getByRole('status').filter({hasText:'Cancelado · Versão 2'})).toBeVisible();
+  await page.getByRole('button',{name:'Remover relatório',exact:true}).click();await page.getByLabel('Motivo',{exact:true}).fill('Remoção fictícia');await page.getByRole('button',{name:'Confirmar ação'}).click();await expect(page.getByRole('status').filter({hasText:'Removido · Versão 2'})).toBeVisible();
+  await page.getByRole('button',{name:'Voltar aos relatórios'}).click();
+  for(const width of [320,360,375,390,412,768,1280]){await page.setViewportSize({width,height:844});const layout=await page.evaluate(()=>({width:innerWidth,scroll:document.documentElement.scrollWidth,overflow:[...document.querySelectorAll('main *')].filter(e=>e.getBoundingClientRect().right>innerWidth+1).slice(0,8).map(e=>({tag:e.tagName,className:e.className,right:e.getBoundingClientRect().right}))}));expect(layout.scroll,JSON.stringify(layout)).toBeLessThanOrEqual(width+1);}
+});
 test.setTimeout(180000);
-async function login(page: Page, account = admin) {
+async function login(page: Page, account = admin, generator = false) {
   await page.goto('/');
   await page.getByLabel('Usuário', {exact: true}).fill(account.username);
   await page.getByLabel('Senha', {exact: true}).fill(account.password);
@@ -21,13 +88,13 @@ async function login(page: Page, account = admin) {
     response = await submit();
   }
   expect(response.status()).toBe(200);
-  await expect(page.getByRole('heading', {name:'Painel de boletins'})).toBeVisible();
+  await expect(page.getByRole('heading', {name:generator?'Registrar boletim':'Painel de boletins'})).toBeVisible();
   return response.json();
 }
 async function forward(page: Page, count = 1) {
   for (let i=0;i<count;i++) await page.getByRole('button', {name:'Continuar', exact:true}).click();
 }
-async function newBo(page: Page, count: number, doubleClick = false) {
+async function newBo(page: Page, count: number, doubleClick = false, generator = false) {
   await page.getByRole('button', {name:'Novo boletim', exact:true}).last().click();
   await page.getByLabel(/E-mail para recebimento/).fill('recipient@example.com');
   await page.getByLabel(/Tipo de ocorrência/).fill('Teste fictício de integração');
@@ -55,7 +122,7 @@ async function newBo(page: Page, count: number, doubleClick = false) {
   if(doubleClick) await page.getByRole('button', {name:'Confirmar e gerar boletim'}).evaluate(button => {(button as HTMLButtonElement).click();(button as HTMLButtonElement).click();});
   else await page.getByRole('button', {name:'Confirmar e gerar boletim'}).click();
   await expect(page.getByRole('heading', {name:'Boletim gerado com sucesso'})).toBeVisible();
-  await expect(page.getByText('Falhou', {exact:true})).toHaveCount(2);
+  if(!generator) await expect(page.getByText('Falhou', {exact:true})).toHaveCount(2);
   const result = await (await emitted).json();
   expect(result.bo_number).toMatch(/^\d{8}-\d{2,}$/);
   return result.bo_number as string;
