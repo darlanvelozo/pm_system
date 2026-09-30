@@ -27,3 +27,9 @@ html{scroll-padding-top:80px}input,textarea,select{scroll-margin-top:100px}.mobi
 }
 
 .person-section{scroll-margin-top:calc(90px + env(safe-area-inset-top))}.person-section .action-row{margin-block:16px}.person-section .action-row button{white-space:normal}
+.generator-shell { min-height: 100dvh; }
+.workspace, .content { min-width: 0; }
+.report-review { overflow-wrap: anywhere; }
+.report-review div { padding: .7rem 0; border-bottom: 1px solid #e2e8f0; }
+.report-review dt { font-weight: 600; }
+.report-review dd { margin: .3rem 0; white-space: pre-wrap; }
