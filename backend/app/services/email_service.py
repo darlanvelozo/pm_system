@@ -14,11 +14,14 @@ def filename(number):
 
 
 def send_bulletin_pdf(recipient, bulletin, pdf_bytes):
+    return send_document_pdf(recipient, pdf_bytes, *email_summary(bulletin))
+
+
+def send_document_pdf(recipient, pdf_bytes, subject, body, attachment):
     cfg = settings()
     if cfg.email_provider == 'smtp' and (not cfg.smtp_host or not cfg.smtp_from):
         return False
     message = EmailMessage()
-    subject, body, attachment = email_summary(bulletin)
     message['Subject'] = subject
     message['From'] = {'gmail_api': cfg.gmail_from, 'brevo': cfg.brevo_from, 'smtp': cfg.smtp_from}[cfg.email_provider]
     message['To'] = recipient
