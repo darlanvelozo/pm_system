@@ -91,7 +91,7 @@ def narrative(title, value, minimum):
 def ending(data):
     result = [heading('EFETIVO EMPENHADO')]
     for t in data.team:
-        result.append(row([f'VTR: {t.vehicle}', f'Posto/Nome Cmt: {t.commander_name}', f'Mat: {t.commander_registration}', f'Posto/Patru: {t.patrol_officer_name}', f'Mat: {t.patrol_officer_registration}'], [.15, .3, .15, .25, .15], height=22))
+        result.append(row([f'VTR: {t.vehicle}', f'Posto/Graduação/Nome Cmt: {t.commander_name}', f'Mat: {t.commander_registration}', f'Posto/Patru: {t.patrol_officer_name}', f'Mat: {t.patrol_officer_registration}'], [.15, .3, .15, .25, .15], height=22))
     d = data.delivery
     result.extend([heading('UNIDADE DE ENTREGA'),
         row([f'Unidade: {d.unit}', f'Data: {d.date.strftime("%d/%m/%Y") if d.date else "___/___/______"}', f'Hora: {d.time.strftime("%H:%M") if d.time else "___:___"}'], [.6, .22, .18]),
