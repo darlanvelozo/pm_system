@@ -26,3 +26,8 @@ docs/references/*
 .neon
 
 frontend/public/sw.js
+# Example PDFs with fictitious data shipped with the in-app guide.
+!frontend/public/guia/anexos/*.pdf
+
+deploy/backups/
+deploy/public-url.txt
