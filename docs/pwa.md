@@ -8,6 +8,6 @@ O service worker armazena somente ícones, página pública offline e arquivos e
 
 Nova versão instalada fica aguardando. “Atualizar” abre confirmação para salvar o trabalho; só depois da confirmação ocorre ativação/recarregamento. É necessário entrar novamente, pois o token fica em memória. O rascunho local continua recuperável pelo mesmo usuário.
 
-A interface inclui navegação inferior e menu em telas pequenas, listagem em cartões, progresso “Etapa X de 8”, áreas de toque de pelo menos 44 px, `dvh` e safe areas. A validação automatizada cobre 320, 360, 375, 390, 412 e 768 px. Simular standalone no Chromium não substitui homologar a instalação real em Android e iOS.
+A interface inclui navegação inferior e menu em telas pequenas, listagem em cartões, progresso “Etapa X de 8”, áreas de toque de pelo menos 44 px, `dvh` e safe areas. A validação automatizada cobre 320, 360, 375, 390, 412 e 768 px. Em telas de toque (iOS Safari, Chrome Android) ou quando o navegador não tem visualizador de PDF, a prévia não usa iframe: mostra “Abrir PDF” e “Baixar PDF”. O menu lateral móvel tem fundo escurecido, fecha com Esc, toque fora ou navegação e mantém o foco dentro dele; tabelas administrativas viram cartões em até 768 px. Simular standalone no Chromium não substitui homologar a instalação real em Android e iOS.
 
 Referências de implementação: [PWA no Next.js](https://nextjs.org/docs/app/guides/progressive-web-apps) e [Serwist com Next.js](https://serwist.pages.dev/docs/next).

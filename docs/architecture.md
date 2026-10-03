@@ -16,7 +16,7 @@ Formulários Google indisponíveis na consulta inicial; os PDFs oficiais e o ped
 
 ## Decisões técnicas
 
-Autenticação JWT curta em memória no navegador, hash Argon2, sem cadastro público. Usuário inativo bloqueado mesmo com token válido. Operador consulta e baixa apenas seus boletins; administrador consulta todos, gerencia usuários, consulta auditoria e reenvia. Esta política conservadora aguarda confirmação institucional.
+Autenticação JWT curta em memória no navegador, hash Argon2, sem cadastro público. Usuário inativo bloqueado mesmo com token válido. Usuário comum (`OPERADOR`) consulta e baixa apenas seus boletins; administrador consulta todos, gerencia usuários, consulta auditoria e reenvia. Esta política conservadora aguarda confirmação institucional.
 
 Boletim emitido é imutável. PUT edita somente rascunhos persistidos. Emissão explícita valida novamente, gera PDF e grava conteúdo binário no PostgreSQL na mesma transação dos metadados. StorageService permite trocar o armazenamento sem mudar a API. E-mail é processado após commit; falhas não removem boletim. PENDING é persistido e pode ser recuperado por comando de manutenção. SMTP não oferece exatamente-uma-vez; uma queda após aceitação e antes do commit pode causar entrega repetida ao recuperar.
 

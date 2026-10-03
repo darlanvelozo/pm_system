@@ -98,14 +98,18 @@ O JWT permanece apenas em memória e expira em 30 minutos. Após recarregar a p�
 
 ## Permissões
 
-| Recurso | Operador | Administrador |
+Existem somente dois perfis: **Usuário comum** (valor `OPERADOR` no banco) e **Administrador** (`ADMIN`). O antigo perfil GERADOR (“Usuário simples”) foi removido; a migration `20261002_two_roles` converte essas contas em Usuário comum.
+
+| Recurso | Usuário comum | Administrador |
 |---|---|---|
-| Criar, revisar e emitir | Sim | Sim |
-| Consultar e baixar | Próprios boletins | Todos |
+| Criar, revisar e emitir BO e Relatório Analítico | Sim | Sim |
+| Consultar e baixar | Próprios registros | Todos |
 | Alterar rascunho | Próprios | Todos |
 | Corrigir emitido / versões / cancelar / remover | Não | Sim |
 | Reenviar e-mail | Não | Sim |
-| Gerenciar usuários / auditoria | Não | Sim |
+| Gerenciar usuários / auditoria / estatísticas | Não | Sim |
+| Configurações e diagnóstico | Não | Sim |
+| Guia de uso (Ajuda) | Guia comum | Guia comum + guia do administrador |
 
 A regra de consulta conservadora precisa de homologação institucional. O protocolo é gerado na primeira emissão em America/Fortaleza, com sequência diária atômica e unicidade global. E-mail institucional vem exclusivamente da configuração do backend; `battalionEmail` enviado pelo cliente é ignorado.
 
@@ -119,7 +123,7 @@ Os dois PDFs oficiais foram examinados localmente. **Não estão no repositório
 
 ## E-mail
 
-São duas mensagens independentes com o mesmo PDF: uma para `BATTALION_EMAIL` (padrão `boletimonline24bpm@gmail.com`) e outra para `recipient_email`. Não há CC. TLS é obrigatório: STARTTLS por padrão, ou TLS direto com `SMTP_SSL=true`.
+São duas mensagens independentes com o mesmo PDF: uma para o e-mail institucional definido em Configurações ou, se vazio, `BATTALION_EMAIL` (padrão `boletimonline24bpm@gmail.com`) e outra para `recipient_email`. Não há CC. TLS é obrigatório: STARTTLS por padrão, ou TLS direto com `SMTP_SSL=true`.
 
 O registro e PDF são confirmados antes do envio. Status e timestamps de cada destinatário são independentes (`PENDING`, `SENT`, `FAILED`, `NOT_SENT`). Revisões ficam `NOT_SENT` até reenvio explícito. Ausência de configuração do provedor resulta em `FAILED`, nunca em falso sucesso. O painel consulta novamente enquanto há envios pendentes.
 
@@ -140,7 +144,9 @@ Agende esse comando na infraestrutura conforme a operação. Sem um worker exter
 | Frontend | `NEXT_PUBLIC_API_URL` | URL pública da API |
 | Backend | `DATABASE_URL` | Conexão PostgreSQL externa, como Neon Free, com TLS |
 | Backend | `JWT_SECRET` | Segredo aleatório, mínimo 32 caracteres |
-| Backend | `BATTALION_EMAIL` | Destino institucional definido no servidor |
+| Backend | `BATTALION_EMAIL` | Destino institucional padrão (Configurações pode sobrepor) |
+| Backend | `UNIT_NAME`, `UNIT_SHORT_NAME`, `UNIT_CITY` | Padrões da unidade nos rodapés/e-mails (Configurações pode sobrepor) |
+| Backend | `REPORT_SIGNATORY_NAME`, `_RANK`, `_TITLE` | Signatário padrão do Relatório Analítico (Configurações pode sobrepor) |
 | Backend | `SMTP_HOST`, `SMTP_PORT` | Servidor e porta SMTP |
 | Backend | `SMTP_USERNAME`, `SMTP_PASSWORD` | Autenticação SMTP |
 | Backend | `SMTP_FROM` | Remetente autorizado no provedor |
@@ -156,7 +162,7 @@ Nunca versione `.env` real. O `.gitignore` exclui segredos, PDFs, bancos locais,
 
 `POST /api/auth/login`, `GET /api/auth/me`, `POST /api/bo`, `GET /api/bo`, `GET /api/bo/{id}`, `PUT /api/bo/{id}`, `GET /api/bo/{id}/pdf`, `POST /api/bo/{id}/resend-email`.
 
-Criação recebe `{"data":{...},"emit":true|false}`. Atualização também requer `version` para impedir sobrescrita de edição concorrente. A listagem aceita `page` e `size`, até 100 por página, e omite narrativa e dados pessoais. Endpoints administrativos: `/api/admin/users`, `/api/admin/users/{id}` e `/api/admin/audit`.
+Criação recebe `{"data":{...},"emit":true|false}`. Atualização também requer `version` para impedir sobrescrita de edição concorrente. A listagem aceita `page` e `size`, até 100 por página, e omite narrativa e dados pessoais. Endpoints administrativos: `/api/admin/users`, `/api/admin/users/{id}`, `/api/admin/audit`, `/api/admin/settings` (GET/PUT), `/api/admin/diagnostics` e `/api/admin/diagnostics/test-email`.
 
 ## Segurança operacional
 
@@ -232,6 +238,14 @@ Autenticação GitHub deve ser fornecida pelo Git/credential manager do ambiente
 Consulte [numeração, idempotência, prévia e verificação](docs/protocol-and-verification.md) e [resumo dos e-mails](docs/email-summary.md). A interface inclui filtros no servidor, Meus rascunhos, relatório administrativo e scroll ao cabeçalho do envolvido. `FRONTEND_URL` no backend define o destino do QR; por padrão já usa https://bpm24online.vercel.app. O hash é calculado depois de finalizar o PDF e não é inserido no próprio arquivo.
 
 Resultados desta etapa: [validação de protocolos e integridade](docs/validation-protocol-20260929.md).
-# Relatórios Analíticos e Usuário simples
+# Relatórios Analíticos
 
-A aplicação também possui Relatórios Analíticos, com sequência anual independente, prévia, revisões e envio de PDF. O perfil GERADOR permite apenas novos BOs e rascunhos próprios. Consulte a [matriz de permissões, fontes do formulário e configuração da autoridade](docs/analytical-reports.md).
+A aplicação também possui Relatórios Analíticos, com sequência anual independente, prévia, revisões e envio de PDF, disponíveis para Usuário comum e Administrador. Consulte a [matriz de permissões, fontes do formulário e configuração da autoridade](docs/analytical-reports.md).
+
+# Configurações (ADMIN)
+
+Em **Administração → Configurações** o administrador edita, sem novo deploy: dados da unidade usados nos rodapés de PDF e nos e-mails, e-mail institucional (cópia do batalhão) e reply-to, e o signatário do Relatório Analítico. Os valores ficam na tabela `system_settings`; campo vazio usa a variável de ambiente correspondente. PDFs já emitidos não mudam. A mesma página mostra o diagnóstico (provedor de e-mail configurado ou não, banco, migration, versão, ambiente, URL do QR) e envia e-mail de teste. Detalhes em [Configurações](docs/settings.md).
+
+# Guia de uso
+
+O menu **Ajuda** abre o guia ilustrado dentro do sistema; o administrador vê também o guia do administrador. A versão pública com dados fictícios está em `/guia`. Para regenerar capturas e anexos, veja [docs/guia.md](docs/guia.md).

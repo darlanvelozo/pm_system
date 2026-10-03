@@ -33,22 +33,22 @@ O campo LOCAL final do PDF é apresentado como **Local de emissão (município)*
 
 ## Matriz de permissões
 
-| Recurso | ADMIN | OPERADOR | GERADOR |
-|---|---|---|---|
-| Novo BO / prévia / emissão | Sim | Sim | Sim |
-| Editar rascunho BO | Todos | Próprio | Próprio |
-| Consultar BOs / emitidos / baixar PDF | Todos | Próprios permitidos | Não |
-| Corrigir / cancelar / remover BO | Sim | Não | Não |
-| Versões e reenvio de BO | Sim | Não | Não |
-| Novo relatório / prévia / emissão | Sim | Sim | Não |
-| Consultar relatório / PDF | Todos | Próprios permitidos | Não |
-| Editar rascunho de relatório | Todos | Próprio | Não |
-| Corrigir / cancelar / remover / versões / reenviar relatório | Sim | Não | Não |
-| Usuários / auditoria / estatísticas | Sim | Não | Não |
+| Recurso | ADMIN (Administrador) | OPERADOR (Usuário comum) |
+|---|---|---|
+| Novo BO / prévia / emissão | Sim | Sim |
+| Editar rascunho BO | Todos | Próprio |
+| Consultar BOs / emitidos / baixar PDF | Todos | Próprios |
+| Corrigir / cancelar / remover BO | Sim | Não |
+| Versões e reenvio de BO | Sim | Não |
+| Novo relatório / prévia / emissão | Sim | Sim |
+| Consultar relatório / PDF | Todos | Próprios |
+| Editar rascunho de relatório | Todos | Próprio |
+| Corrigir / cancelar / remover / versões / reenviar relatório | Sim | Não |
+| Usuários / auditoria / estatísticas / Configurações | Sim | Não |
 
-GERADOR aparece como **Usuário simples**. Após login vê Novo boletim, Continuar rascunho quando disponível, Conta e Sair. `/api/bo/active-draft` retorna somente o rascunho próprio mais recente. O backend bloqueia listagem, consulta de emitidos, PDF, verificação, versões, administração e todo o router de relatórios. A resposta de emissão/retry do GERADOR contém apenas ID interno, protocolo, status e versão; não reabre os dados emitidos. A chave de emissão permite repetir a confirmação sem emitir novamente. Nunca há login automático.
+O perfil GERADOR (“Usuário simples”) foi removido em 02/10/2026. A migration `20261002_two_roles` converte essas contas em Usuário comum (`OPERADOR`); a API rejeita `GERADOR` com 422 e qualquer valor de perfil desconhecido recebe 403.
 
-ADMIN continua podendo editar nome real, login, perfil, senha e acesso. Não é permitido remover o próprio acesso administrativo ou desativar/rebaixar o último ADMIN ativo, inclusive para GERADOR. O papel vem do banco em cada requisição, sem confiar no menu ou num papel armazenado no JWT.
+ADMIN continua podendo editar nome real, login, perfil, senha e acesso. Não é permitido remover o próprio acesso administrativo ou desativar/rebaixar o último ADMIN ativo. O papel vem do banco em cada requisição, sem confiar no menu ou num papel armazenado no JWT.
 
 ## Dados e ciclo de vida
 
@@ -107,7 +107,7 @@ Eventos `ANALYTICAL_REPORT_*` guardam ator/snapshot, ação, documento, resultad
 
 ## Render e migrations
 
-A migration `20260930_reports`, posterior a `20260929_protocol`, cria três tabelas e adiciona vínculo opcional do relatório à auditoria. Não altera os BOs ou seus números. GERADOR usa o campo textual de perfil existente, sem recriar usuários. Downgrade com relatórios existentes é bloqueado, exigindo plano de restauração.
+A migration `20260930_reports`, posterior a `20260929_protocol`, cria três tabelas e adiciona vínculo opcional do relatório à auditoria. Não altera os BOs ou seus números. Downgrade com relatórios existentes é bloqueado, exigindo plano de restauração.
 
 Preservar o Start Command:
 
@@ -115,7 +115,7 @@ Preservar o Start Command:
 alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port $PORT --workers 1 --no-access-log
 ```
 
-Configure no backend Render, conforme a autoridade autorizada:
+O administrador define o signatário em **Administração → Configurações** (ver [Configurações](settings.md)). As variáveis abaixo, no backend Render, são o valor padrão usado quando o campo da tela está vazio:
 
 | Variável | Conteúdo |
 |---|---|
