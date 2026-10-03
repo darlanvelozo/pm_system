@@ -1,0 +1,55 @@
+name: bo24
+services:
+  postgres:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: bo
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?defina no .env}
+      POSTGRES_DB: bo
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U bo"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  api:
+    build: {context: .., dockerfile: deploy/backend.Dockerfile}
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      DATABASE_URL: postgresql+psycopg://bo:${POSTGRES_PASSWORD}@postgres:5432/bo
+      ENVIRONMENT: production
+      ALLOWED_ORIGINS: ${PUBLIC_URL}
+      FRONTEND_URL: ${PUBLIC_URL}
+    depends_on:
+      postgres: {condition: service_healthy}
+
+  web:
+    build: {context: .., dockerfile: deploy/frontend.Dockerfile}
+    restart: unless-stopped
+    depends_on: [api]
+
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+    ports:
+      - "127.0.0.1:8088:80"
+    depends_on: [api, web]
+
+  # Free Cloudflare Quick Tunnel: public https://*.trycloudflare.com with no open inbound ports.
+  # The hostname is published on the metrics endpoint; sync-url.sh keeps PUBLIC_URL in sync.
+  tunnel:
+    image: cloudflare/cloudflared:latest
+    restart: unless-stopped
+    command: tunnel --no-autoupdate --metrics 0.0.0.0:2000 --url http://caddy:80
+    ports:
+      - "127.0.0.1:20241:2000"
+    depends_on: [caddy]
+
+volumes:
+  pgdata:

@@ -1,0 +1,13 @@
+:80 {
+	encode gzip
+	# Cloudflare sets CF-Connecting-IP at the edge; pass it as the client IP for rate limiting.
+	@api path /api/* /health
+	handle @api {
+		reverse_proxy api:8000 {
+			header_up X-Forwarded-For {http.request.header.CF-Connecting-IP}
+		}
+	}
+	handle {
+		reverse_proxy web:3000
+	}
+}
