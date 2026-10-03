@@ -6,11 +6,12 @@ import { Field, Fields } from '@/components/Fields';
 import { emptyPerson, emptyTeam, personSchema, positionLabel, roles, transport, type BulletinData } from '@/schemas/bulletin';
 
 export function OccurrenceHeaderForm({suggestions = []}: {suggestions?: string[]}) {
-  const {register, watch} = useFormContext<BulletinData>();
+  const {register, watch, formState: {errors}} = useFormContext<BulletinData>();
+  const typeError = errors.occurrence_type?.message;
   return <><Field name="recipient_email" type="email" required />
     <p className="hint">Uma cópia será enviada para este endereço e outra para o batalhão, separadamente.</p>
-    <p>Nº do BO: <strong>{watch('bo_number') || 'Será gerado automaticamente na emissão'}</strong></p>
-    <div className="form-grid"><Field name="dispatch_number" /><label className="field">Tipo de ocorrência *<input id="occurrence_type" list="occurrence-types" {...register('occurrence_type')} required maxLength={200}/><datalist id="occurrence-types">{[...new Set([...suggestions, 'Outro'])].map(s => <option key={s} value={s}/>)}</datalist></label><label className="field">Descrição breve da ocorrência<input id="occurrence_summary" {...register('occurrence_summary')} maxLength={80}/><small>Não informe nomes, CPF, RG ou outros dados pessoais neste campo.</small></label><Field name="occurrence_date" type="date" required /><Field name="occurrence_time" type="time" required /></div>
+    <p className="bo-number">Nº do BO: <strong>{watch('bo_number') || 'Será gerado automaticamente na emissão'}</strong></p>
+    <div className="form-grid"><Field name="dispatch_number" /><div className="field"><label htmlFor="occurrence_type">Tipo de ocorrência<span className="required"> *</span></label><input id="occurrence_type" list="occurrence-types" {...register('occurrence_type')} required maxLength={200} aria-invalid={!!typeError} aria-describedby={typeError ? 'occurrence_type-error' : undefined}/><datalist id="occurrence-types">{[...new Set([...suggestions, 'Outro'])].map(s => <option key={s} value={s}/>)}</datalist>{typeError && <small id="occurrence_type-error" className="error-text">{typeError}</small>}</div><div className="field"><label htmlFor="occurrence_summary">Descrição breve da ocorrência</label><input id="occurrence_summary" {...register('occurrence_summary')} maxLength={80} aria-describedby="occurrence_summary-hint"/><small id="occurrence_summary-hint">Não informe nomes, CPF, RG ou outros dados pessoais neste campo.</small></div><Field name="occurrence_date" type="date" required /><Field name="occurrence_time" type="time" required /></div>
   </>;
 }
 export function LocationForm() { return <div className="form-grid"><Field name="location.street" required /><Field name="location.number" /><Fields prefix="location" names={['neighborhood', 'complement', 'zip_code', 'reference']} /><Field name="location.city" required /><Field name="location.location_type" /></div>; }

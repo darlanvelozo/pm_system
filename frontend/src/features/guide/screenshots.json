@@ -1,0 +1,132 @@
+{
+  "login": {
+    "src": "/guia/login.webp",
+    "width": 1366,
+    "height": 900
+  },
+  "painel": {
+    "src": "/guia/painel.webp",
+    "width": 1366,
+    "height": 900
+  },
+  "filtros": {
+    "src": "/guia/filtros.webp",
+    "width": 1050,
+    "height": 1075
+  },
+  "bo-etapa-1": {
+    "src": "/guia/bo-etapa-1.webp",
+    "width": 1000,
+    "height": 673
+  },
+  "bo-etapa-2": {
+    "src": "/guia/bo-etapa-2.webp",
+    "width": 1000,
+    "height": 590
+  },
+  "bo-etapa-3": {
+    "src": "/guia/bo-etapa-3.webp",
+    "width": 1000,
+    "height": 1100
+  },
+  "bo-etapa-4": {
+    "src": "/guia/bo-etapa-4.webp",
+    "width": 1000,
+    "height": 568
+  },
+  "bo-etapa-6": {
+    "src": "/guia/bo-etapa-6.webp",
+    "width": 1000,
+    "height": 1076
+  },
+  "bo-etapa-8": {
+    "src": "/guia/bo-etapa-8.webp",
+    "width": 1000,
+    "height": 1100
+  },
+  "previa": {
+    "src": "/guia/previa.webp",
+    "width": 1366,
+    "height": 900
+  },
+  "emitido": {
+    "src": "/guia/emitido.webp",
+    "width": 1366,
+    "height": 900
+  },
+  "detalhe": {
+    "src": "/guia/detalhe.webp",
+    "width": 1050,
+    "height": 483
+  },
+  "verificar": {
+    "src": "/guia/verificar.webp",
+    "width": 1366,
+    "height": 900
+  },
+  "relatorio-form": {
+    "src": "/guia/relatorio-form.webp",
+    "width": 1366,
+    "height": 900
+  },
+  "relatorio-detalhe": {
+    "src": "/guia/relatorio-detalhe.webp",
+    "width": 1366,
+    "height": 900
+  },
+  "admin-usuarios": {
+    "src": "/guia/admin-usuarios.webp",
+    "width": 1366,
+    "height": 900
+  },
+  "admin-editar-usuario": {
+    "src": "/guia/admin-editar-usuario.webp",
+    "width": 600,
+    "height": 580
+  },
+  "admin-auditoria": {
+    "src": "/guia/admin-auditoria.webp",
+    "width": 1366,
+    "height": 900
+  },
+  "admin-estatisticas": {
+    "src": "/guia/admin-estatisticas.webp",
+    "width": 1366,
+    "height": 900
+  },
+  "admin-acoes-bo": {
+    "src": "/guia/admin-acoes-bo.webp",
+    "width": 1366,
+    "height": 900
+  },
+  "admin-configuracoes": {
+    "src": "/guia/admin-configuracoes.webp",
+    "width": 1366,
+    "height": 900
+  },
+  "admin-diagnostico": {
+    "src": "/guia/admin-diagnostico.webp",
+    "width": 1000,
+    "height": 679
+  },
+  "mobile-painel": {
+    "src": "/guia/mobile-painel.webp",
+    "width": 1170,
+    "height": 1992
+  },
+  "mobile-menu": {
+    "src": "/guia/mobile-menu.webp",
+    "width": 1170,
+    "height": 1992
+  },
+  "mobile-wizard": {
+    "src": "/guia/mobile-wizard.webp",
+    "width": 1170,
+    "height": 1992
+  },
+  "mobile-previa": {
+    "src": "/guia/mobile-previa.webp",
+    "width": 1170,
+    "height": 1992
+  }
+}

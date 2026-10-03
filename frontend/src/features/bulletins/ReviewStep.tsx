@@ -9,6 +9,6 @@ function Value({ value }: { value: unknown }) {
   if (typeof value === 'object') return <dl className="review-grid">{Object.entries(value as Record<string, unknown>).filter(([key,v]) => !['id','bulletin_type','draft_step'].includes(key) && !(key === 'extras' && v === null)).map(([key,v]) => <div className={typeof v === 'object' ? 'wide' : ''} key={key}><dt>{labels[key] || key}</dt><dd><Value value={v} /></dd></div>)}</dl>;
   return <>{String(value)}</>;
 }
-export function ReviewStep({ data }: { data: BulletinData }) {
-  return <div className="review"><div className="notice">Confira os dados e o e-mail antes de emitir. Após a emissão, o boletim fica disponível para consulta e download.</div><Value value={{...data, people: undefined}} />{data.people.map((person, i) => <section key={person.id || i}><h3>Envolvido {positionLabel(i)}</h3><Value value={person}/></section>)}</div>;
+export function ReviewStep({ data, notice = true }: { data: BulletinData; notice?: boolean }) {
+  return <div className="review">{notice && <div className="notice">Confira os dados e o e-mail antes de emitir. Após a emissão, o boletim fica disponível para consulta e download.</div>}<Value value={{...data, bo_number: data.bo_number || 'Será gerado automaticamente na emissão', people: undefined}} />{data.people.map((person, i) => <section key={person.id || i}><h3>Envolvido {positionLabel(i)}</h3><Value value={person}/></section>)}</div>;
 }
