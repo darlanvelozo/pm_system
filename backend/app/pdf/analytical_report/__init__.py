@@ -6,10 +6,11 @@ from reportlab.lib.styles import ParagraphStyle
 from reportlab.platypus import Image, KeepTogether, SimpleDocTemplate, Spacer, Table, TableStyle
 from app.core.config import settings
 from app.pdf.components import text
+from app.services.system_settings import authority, effective_settings
 
 LAYOUT_VERSION = '2026.1'
 WIDTH = A4[0] - 50
-CELL = ParagraphStyle('report-cell', fontName='Times-Roman', fontSize=10, leading=13, wordWrap='CJK')
+CELL = ParagraphStyle('report-cell', fontName='Times-Roman', fontSize=10, leading=13)
 CENTER = ParagraphStyle('report-center', parent=CELL, alignment=1)
 BOLD = ParagraphStyle('report-heading', parent=CENTER, fontName='Times-Bold', spaceAfter=7)
 
@@ -24,17 +25,17 @@ def table(values, widths=None, minimum=19):
     return result
 
 
-def authority_snapshot():
-    cfg = settings()
-    return {'name': cfg.report_signatory_name, 'rank': cfg.report_signatory_rank, 'title': cfg.report_signatory_title}
+def authority_snapshot(db=None):
+    return authority(effective_settings(db))
 
 
-def generate_report_pdf(data, number=None, version=1, registered_by='', authority=None, preview=False):
+def generate_report_pdf(data, number=None, version=1, registered_by='', authority=None, preview=False, unit=None):
     output = BytesIO()
     cfg = settings()
+    unit = unit or effective_settings()
     authority = authority if authority is not None else authority_snapshot()
     doc = SimpleDocTemplate(output, pagesize=A4, leftMargin=25, rightMargin=25, topMargin=30, bottomMargin=72,
-                            title='Relatório Analítico de Ocorrência', author='24º BPM')
+                            title='Relatório Analítico de Ocorrência', author=unit['unit_short_name'])
     assets = Path(cfg.pdf_asset_dir)
     heading = 'ESTADO DO MARANHÃO\nSECRETARIA DE ESTADO DE SEGURANÇA PÚBLICA\nPOLÍCIA MILITAR DO MARANHÃO\nCOMANDO DO POLICIAMENTO DO INTERIOR\n24º BATALHÃO DE POLÍCIA MILITAR'
     header = Table([[Image(str(assets / 'emblem.png'), width=55, height=48), text(heading, CENTER),
@@ -72,7 +73,7 @@ def generate_report_pdf(data, number=None, version=1, registered_by='', authorit
         _, height = registrar.wrap(WIDTH, 30)
         registrar.drawOn(canvas, 25, 44-height)
         canvas.setFont('Times-Roman', 8)
-        canvas.drawCentredString(A4[0]/2, 17, '24º Batalhão de Polícia Militar · Coroatá/MA')
+        canvas.drawCentredString(A4[0]/2, 17, ' · '.join(filter(None, [unit['unit_name'], unit['unit_city']])))
         canvas.restoreState()
     doc.build(items, onFirstPage=footer, onLaterPages=footer)
     return output.getvalue()

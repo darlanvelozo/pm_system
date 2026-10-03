@@ -34,6 +34,10 @@ class Settings(BaseSettings):
     report_signatory_name: str = ''
     report_signatory_rank: str = ''
     report_signatory_title: str = ''
+    # Unit identification; admins may override these in Configurações (system_settings).
+    unit_name: str = '24º Batalhão de Polícia Militar'
+    unit_short_name: str = '24º BPM'
+    unit_city: str = 'Coroatá/MA'
 
     @field_validator('jwt_secret')
     @classmethod

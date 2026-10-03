@@ -15,6 +15,7 @@ from app.services import analytical_reports as service
 from app.services.audit import audit
 from app.services.storage import DatabaseStorage
 from app.pdf.analytical_report import generate_report_pdf
+from app.services.system_settings import authority, effective_settings
 
 router = APIRouter(prefix='/api/analytical-reports', dependencies=[Depends(operator)])
 
@@ -66,7 +67,9 @@ def listing(page: int = Query(1, ge=1), size: int = Query(20, ge=1, le=100), q: 
 
 @router.post('/preview-pdf')
 def preview(data: ReportInput, user=Depends(operator), db: Session = Depends(get_db)):
-    content = generate_report_pdf(data, registered_by=f'{user.name} ({user.username or user.email})', preview=True)
+    unit = effective_settings(db)
+    content = generate_report_pdf(data, registered_by=f'{user.name} ({user.username or user.email})', preview=True,
+                                  authority=authority(unit), unit=unit)
     audit(db, user.id, 'ANALYTICAL_REPORT_PREVIEWED')
     save(db)
     return Response(content, media_type='application/pdf', headers={'Content-Disposition': 'inline; filename="previa-relatorio.pdf"'})

@@ -1,5 +1,5 @@
-from reportlab.platypus import KeepTogether
-from app.pdf.components import header, location, involved, narrative, ending
+from reportlab.platypus import KeepTogether, Table, TableStyle
+from app.pdf.components import WIDTH, header, location, involved, narrative, ending
 
 PDF_LAYOUT_VERSION = '2026.4'
 
@@ -23,13 +23,20 @@ def position_label(index):
     return result
 
 
+def person_block(rows):
+    # Rows stay in one table so the person heading repeats when a block continues on the next page.
+    table = Table([[r] for r in rows], colWidths=[WIDTH], repeatRows=1, splitByRow=1)
+    table.setStyle(TableStyle([(k, (0, 0), (-1, -1), 0) for k in ('LEFTPADDING', 'RIGHTPADDING', 'TOPPADDING', 'BOTTOMPADDING')]))
+    return table
+
+
 def build(data):
     story = header(data) + location(data)
     for index, person in enumerate(data.people):
         # KeepTogether gives a person a fresh page when possible, but lets large
         # blocks split at row boundaries instead of shrinking or truncating text.
         extra = len(data.people) <= 2 or (person.extras is not None and has_content(person.extras.model_dump()))
-        story.append(KeepTogether(involved(person, position_label(index), extra=extra)))
+        story.append(KeepTogether([person_block(involved(person, position_label(index), extra=extra))]))
     story.extend(narrative('Histórico', data.history, 50))
     story.extend(narrative('Material Apreendido', data.seized_material, 30))
     tail = ending(data)

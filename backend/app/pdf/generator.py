@@ -4,12 +4,14 @@ from reportlab.platypus import SimpleDocTemplate
 from app.pdf.layout import build
 
 
-def generate_pdf(data, registered_by=None, version=1, bulletin_id=None, preview=False):
+def generate_pdf(data, registered_by=None, version=1, bulletin_id=None, preview=False, unit=None):
+    from app.services.system_settings import effective_settings
+    unit = unit or effective_settings()
     if preview:
         data = data.model_copy(update={'bo_number': 'PENDENTE'})
     output = BytesIO()
     doc = SimpleDocTemplate(output, pagesize=A4, leftMargin=10, rightMargin=10, topMargin=48, bottomMargin=70,
-                            title='Boletim de Ocorrência – PMMA', author='24º BPM')
+                            title='Boletim de Ocorrência – PMMA', author=unit['unit_short_name'])
 
     def footer(canvas, document):
         canvas.saveState()
@@ -36,7 +38,7 @@ def generate_pdf(data, registered_by=None, version=1, bulletin_id=None, preview=
             lines = simpleSplit(f'Registrado por: {registered_by}', 'Helvetica', 7, A4[0]-130)
             for index, line in enumerate(reversed(lines)):
                 canvas.drawString(12, 10 + index * 8, line)
-        canvas.drawRightString(A4[0]-12, 10, f'24º BPM • Página {document.page}')
+        canvas.drawRightString(A4[0]-12, 10, f'{unit["unit_short_name"]} • Página {document.page}')
         canvas.restoreState()
 
     doc.build(build(data), onFirstPage=footer, onLaterPages=footer)

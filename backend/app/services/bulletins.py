@@ -1,6 +1,5 @@
 from sqlalchemy import select
 import hashlib
-from app.core.config import settings
 from app.db.session import SessionLocal
 from app.models.entities import Bulletin, BulletinRevision, User, now
 from app.pdf.generator import generate_pdf
@@ -8,6 +7,7 @@ from app.pdf.layout import PDF_LAYOUT_VERSION
 from app.services.audit import audit
 from app.services.email_service import send_bulletin_pdf
 from app.services.storage import DatabaseStorage
+from app.services.system_settings import effective_settings, stored_reply_to
 from app.services.protocol import next_protocol
 
 
@@ -22,7 +22,7 @@ def emit(db, bulletin, data, user_id, reason='Emissão inicial'):
         bulletin.registered_by_name_snapshot = creator.name
         bulletin.registered_by_username_snapshot = creator.username or creator.email
     version = (bulletin.current_revision or 0) + 1
-    content = generate_pdf(data, registered_by=f'{bulletin.registered_by_name_snapshot} ({bulletin.registered_by_username_snapshot})', version=version, bulletin_id=bulletin.id)
+    content = generate_pdf(data, registered_by=f'{bulletin.registered_by_name_snapshot} ({bulletin.registered_by_username_snapshot})', version=version, bulletin_id=bulletin.id, unit=effective_settings(db))
     key = f'{bulletin.id}/v{version}.pdf'
     DatabaseStorage(db).put(key, content)
     snapshot = data.model_dump(mode='json')
@@ -50,9 +50,11 @@ def deliver(bulletin_id, user_id, target='both', force=False):
             attr = f'{destination}_email_status'
             if not force and getattr(b, attr) != 'PENDING':
                 continue
-            recipient = str(settings().battalion_email) if destination == 'battalion' else b.recipient_email
+            unit = effective_settings(db)
+            recipient = unit['battalion_email'] if destination == 'battalion' else b.recipient_email
             try:
-                sent = send_bulletin_pdf(recipient, b, DatabaseStorage(db).get(b.pdf_storage_key))
+                sent = send_bulletin_pdf(recipient, b, DatabaseStorage(db).get(b.pdf_storage_key),
+                                         {'unit_short': unit['unit_short_name'], 'reply_to': stored_reply_to(db)})
             except (FileNotFoundError, OSError):
                 sent = False
             status = 'SENT' if sent else 'FAILED'

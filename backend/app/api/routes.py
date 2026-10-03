@@ -18,6 +18,7 @@ from app.services.audit import audit
 from app.services.bulletins import deliver, emit
 from app.services.email_service import filename
 from app.services.storage import DatabaseStorage
+from app.services.system_settings import effective_settings
 from pydantic import BaseModel, Field
 from app.models.entities import now
 
@@ -131,18 +132,12 @@ def me(user=Depends(current_user)):
     return user_view(user)
 
 
-def emission_view(b, user):
-    if user.role == 'GERADOR':
-        return {'id': str(b.id), 'bo_number': b.bo_number, 'status': b.status, 'current_revision': b.current_revision}
-    return present(b)
-
-
 @router.post('/bo', status_code=201)
-def create(data: CreateBulletin, tasks: BackgroundTasks, user=Depends(current_user), db: Session = Depends(get_db), idempotency_key: uuid.UUID | None = Header(None)):
+def create(data: CreateBulletin, tasks: BackgroundTasks, user=Depends(operator), db: Session = Depends(get_db), idempotency_key: uuid.UUID | None = Header(None)):
     if data.emit:
         previous = emission_retry(db, idempotency_key, user)
         if previous:
-            return emission_view(previous, user)
+            return present(previous)
     bulletin = Bulletin(id=uuid.uuid4(), created_by=user.id)
     assign(db, bulletin, data.data)
     db.add(bulletin)
@@ -153,7 +148,7 @@ def create(data: CreateBulletin, tasks: BackgroundTasks, user=Depends(current_us
     save(db)
     if data.emit:
         tasks.add_task(deliver, bulletin.id, user.id)
-    return emission_view(bulletin, user) if data.emit else present(bulletin)
+    return present(bulletin) if data.emit else present(bulletin)
 
 
 @router.get('/bo')
@@ -242,22 +237,22 @@ def statistics(date_from: date | None = None, date_to: date | None = None, statu
 
 
 @router.get('/bo/active-draft')
-def active_draft(user=Depends(current_user), db: Session = Depends(get_db)):
+def active_draft(user=Depends(operator), db: Session = Depends(get_db)):
     b = db.scalar(select(Bulletin).where(Bulletin.created_by == user.id, Bulletin.status == 'DRAFT').order_by(Bulletin.updated_at.desc()).limit(1))
     return present(b) if b else None
 
 
 @router.get('/bo/{bulletin_id}')
-def detail(bulletin_id: uuid.UUID, user=Depends(current_user), db: Session = Depends(get_db)):
+def detail(bulletin_id: uuid.UUID, user=Depends(operator), db: Session = Depends(get_db)):
     return present(accessible(db, bulletin_id, user))
 
 
 @router.put('/bo/{bulletin_id}')
-def update(bulletin_id: uuid.UUID, data: UpdateBulletin, tasks: BackgroundTasks, user=Depends(current_user), db: Session = Depends(get_db), idempotency_key: uuid.UUID | None = Header(None)):
+def update(bulletin_id: uuid.UUID, data: UpdateBulletin, tasks: BackgroundTasks, user=Depends(operator), db: Session = Depends(get_db), idempotency_key: uuid.UUID | None = Header(None)):
     if data.emit:
         previous = emission_retry(db, idempotency_key, user, bulletin_id)
         if previous:
-            return emission_view(previous, user)
+            return present(previous)
     b = accessible(db, bulletin_id, user, lock=True)
     if b.status != 'DRAFT':
         raise HTTPException(409, 'Boletim emitido não pode ser alterado')
@@ -271,11 +266,11 @@ def update(bulletin_id: uuid.UUID, data: UpdateBulletin, tasks: BackgroundTasks,
     save(db)
     if data.emit:
         tasks.add_task(deliver, b.id, user.id)
-    return emission_view(b, user) if data.emit else present(b)
+    return present(b) if data.emit else present(b)
 
 
 @router.get('/bo/{bulletin_id}/pdf')
-def download(bulletin_id: uuid.UUID, user=Depends(current_user), db: Session = Depends(get_db)):
+def download(bulletin_id: uuid.UUID, user=Depends(operator), db: Session = Depends(get_db)):
     b = accessible(db, bulletin_id, user)
     if b.status != 'ISSUED' or not b.pdf_storage_key:
         raise HTTPException(409, 'PDF ainda não foi gerado')
@@ -294,10 +289,10 @@ class EmitInput(BaseModel):
 
 @router.post('/bo/{bulletin_id}/emit')
 def issue(bulletin_id: uuid.UUID, data: EmitInput, tasks: BackgroundTasks,
-          idempotency_key: uuid.UUID = Header(), user=Depends(current_user), db: Session = Depends(get_db)):
+          idempotency_key: uuid.UUID = Header(), user=Depends(operator), db: Session = Depends(get_db)):
     previous = emission_retry(db, idempotency_key, user, bulletin_id)
     if previous:
-        return emission_view(previous, user)
+        return present(previous)
     b = accessible(db, bulletin_id, user, lock=True)
     if b.status != 'DRAFT':
         raise HTTPException(409, 'Este boletim já foi emitido ou encerrado.')
@@ -312,17 +307,17 @@ def issue(bulletin_id: uuid.UUID, data: EmitInput, tasks: BackgroundTasks,
     emit(db, b, validated, user.id)
     save(db)
     tasks.add_task(deliver, b.id, user.id)
-    return emission_view(b, user)
+    return present(b)
 
 
 @router.post('/bo/preview-pdf')
-def preview(data: BulletinInput, user=Depends(current_user)):
-    content = generate_pdf(data, registered_by=f'{user.name} ({user.username or user.email})', preview=True)
+def preview(data: BulletinInput, user=Depends(operator), db: Session = Depends(get_db)):
+    content = generate_pdf(data, registered_by=f'{user.name} ({user.username or user.email})', preview=True, unit=effective_settings(db))
     return Response(content, media_type='application/pdf', headers={'Content-Disposition': 'inline; filename="previa.pdf"', 'Cache-Control': 'no-store'})
 
 
 @router.get('/bo/{bulletin_id}/verify')
-def verify_document(bulletin_id: uuid.UUID, revision: int = Query(ge=1), user=Depends(current_user), db: Session = Depends(get_db)):
+def verify_document(bulletin_id: uuid.UUID, revision: int = Query(ge=1), user=Depends(operator), db: Session = Depends(get_db)):
     b = accessible(db, bulletin_id, user)
     r = db.scalar(select(BulletinRevision).where(BulletinRevision.bulletin_id == b.id, BulletinRevision.version == revision))
     if not r:
@@ -374,9 +369,9 @@ def update_user(user_id: uuid.UUID, data: UserUpdate, user=Depends(admin), db: S
     target = db.get(User, user_id)
     if not target:
         raise HTTPException(404, 'Usuário não encontrado')
-    if target.id == user.id and (data.active is False or data.role in ('OPERADOR', 'GERADOR')):
+    if target.id == user.id and (data.active is False or data.role == 'OPERADOR'):
         raise HTTPException(409, 'Não é permitido remover o próprio acesso administrativo')
-    if target.role == 'ADMIN' and target.active and (data.active is False or data.role in ('OPERADOR', 'GERADOR')):
+    if target.role == 'ADMIN' and target.active and (data.active is False or data.role == 'OPERADOR'):
         if db.scalar(select(func.count()).select_from(User).where(User.role == 'ADMIN', User.active.is_(True))) <= 1:
             raise HTTPException(409, 'Mantenha pelo menos um administrador ativo.')
     if data.username and db.scalar(select(User.id).where(User.id != target.id, (User.username == data.username) | (User.email == data.username))):
@@ -406,6 +401,6 @@ def audit_events(page: int = Query(1, ge=1), user=Depends(admin), db: Session = 
              'username': a.actor_username_snapshot or ((actor.username or actor.email) if actor else None),
              'bulletin_id': str(a.bulletin_id) if a.bulletin_id else None,
              'report_id': str(a.report_id) if a.report_id else None,
-             'action': a.action, 'result': a.result, 'created_at': a.created_at}
+             'action': a.action, 'result': a.result, 'details': a.details, 'created_at': a.created_at}
             for a, actor in db.execute(select(AuditLog, User).outerjoin(User, AuditLog.user_id == User.id)
                                       .order_by(AuditLog.created_at.desc()).offset((page-1)*50).limit(50))]

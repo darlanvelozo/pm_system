@@ -1,37 +1,48 @@
+import importlib.util
 import uuid
+from pathlib import Path
 from io import BytesIO
 import pytest
 from pypdf import PdfReader
 
 
-def test_generator_permissions_and_last_admin(client,accounts,payload):
+def test_generator_role_rejected(client,accounts):
     admin=accounts['admin']['headers']
     response=client.post('/api/admin/users',headers=admin,json={'username':'gerador.teste','name':'Gerador Fictício','password':'Fictional-generator-123','role':'GERADOR'})
-    assert response.status_code == 201,response.text
-    login=client.post('/api/auth/login',json={'username':'gerador.teste','password':'Fictional-generator-123'})
-    assert login.status_code==200 and login.json()['user']['role']=='GERADOR'
+    assert response.status_code==422,response.text
+    assert client.patch(f'/api/admin/users/{accounts["operator"]["user"].id}',headers=admin,json={'role':'GERADOR'}).status_code==422
+    assert client.patch(f'/api/admin/users/{accounts["admin"]["user"].id}',headers=admin,json={'role':'OPERADOR'}).status_code==409
+
+
+def test_migration_turns_generator_into_common_user(client,accounts,payload):
+    from alembic.migration import MigrationContext
+    from alembic.operations import Operations
+    from app.auth.security import hasher
+    from app.db.session import SessionLocal, engine
+    from app.models.entities import User
+    with SessionLocal() as db:
+        db.add(User(username='gerador.legado',name='Gerador Legado Fictício',role='GERADOR',password_hash=hasher.hash('Fictional-generator-123')))
+        db.commit()
+    login=client.post('/api/auth/login',json={'username':'gerador.legado','password':'Fictional-generator-123'})
+    # Before the migration a leftover GERADOR value has no permissions at all.
+    assert client.get('/api/bo',headers={'Authorization':'Bearer '+login.json()['access_token']}).status_code==403
+    spec=importlib.util.spec_from_file_location('two_roles',Path(__file__).parents[1]/'alembic/versions/20261002_two_roles.py')
+    migration=importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(migration)
+    with engine.begin() as connection, Operations.context(MigrationContext.configure(connection)):
+        migration.upgrade()
+    login=client.post('/api/auth/login',json={'username':'gerador.legado','password':'Fictional-generator-123'})
+    assert login.json()['user']['role']=='OPERADOR'
     h={'Authorization':'Bearer '+login.json()['access_token']}
-    for path in ('/api/bo','/api/admin/users','/api/admin/audit','/api/admin/stats','/api/analytical-reports','/api/operational-options'):
+    created=client.post('/api/bo',headers={**h,'Idempotency-Key':str(uuid.uuid4())},json={'data':payload,'emit':True}).json()
+    assert 'data' in created and created['status']=='ISSUED'
+    assert [b['id'] for b in client.get('/api/bo',headers=h).json()['items']]==[created['id']]
+    assert client.get(f'/api/bo/{created["id"]}/pdf',headers=h).status_code==200
+    assert client.get('/api/analytical-reports',headers=h).status_code==200
+    for path in ('/api/admin/users','/api/admin/audit','/api/admin/stats','/api/admin/settings'):
         assert client.get(path,headers=h).status_code==403,path
-    assert client.post('/api/analytical-reports',headers=h,json={'data':{}}).status_code==403
-    r=client.post('/api/bo',headers=h,json={'data':payload}).json()
-    path=f'/api/bo/{r["id"]}'
-    assert client.get('/api/bo/active-draft',headers=h).json()['id']==r['id']
-    updated=client.put(path,headers=h,json={'data':payload,'version':r['version']}).json()
-    assert client.get(path,headers=h).status_code==200
-    assert client.post('/api/bo/preview-pdf',headers=h,json=payload).status_code==200
-    key=str(uuid.uuid4())
-    issued=client.post(path+'/emit',headers={**h,'Idempotency-Key':key},json={'version':updated['version']})
-    assert issued.status_code==200,issued.text
-    assert 'data' not in issued.json()
-    final_pdf=client.get(path+'/pdf',headers=admin)
-    final_text=' '.join(' '.join(p.extract_text() for p in PdfReader(BytesIO(final_pdf.content)).pages).split())
+    final_text=' '.join(' '.join(p.extract_text() for p in PdfReader(BytesIO(client.get(f'/api/bo/{created["id"]}/pdf',headers=h).content)).pages).split())
     assert 'Posto/Graduação/Nome Cmt' in final_text and 'Posto/Nome Cmt' not in final_text
-    assert client.post(path+'/emit',headers={**h,'Idempotency-Key':key},json={'version':updated['version']}).json()['bo_number']==issued.json()['bo_number']
-    for suffix in ('','/pdf','/verify?revision=1','/revisions','/revisions/1/pdf'):
-        assert client.get(path+suffix,headers=h).status_code==403
-    assert client.get('/api/bo/active-draft',headers=h).json() is None
-    assert client.patch(f'/api/admin/users/{accounts["admin"]["user"].id}',headers=admin,json={'role':'GERADOR'}).status_code==409
 
 
 @pytest.mark.parametrize('count',[1,2,3,4,5,8,12])
@@ -46,3 +57,13 @@ def test_new_commander_label(client,accounts,payload,count):
         text=' '.join(text.split())
         assert 'Posto/Graduação/Nome Cmt' in text
         assert 'Posto/Nome Cmt' not in text
+
+
+def test_split_paragraphs_keep_spaces(client,accounts,payload):
+    # Text continued on another page must not lose spaces between words.
+    data={**payload,'seized_material':'Material fictício item. '*400+'FIM MATERIAL','people':[{**payload['people'][0],'observations':'Obs fictícia '*35,'distinguishing_features':'Marca fictícia '*30}]*6}
+    pdf=client.post('/api/bo/preview-pdf',headers=accounts['admin']['headers'],json=data)
+    assert pdf.status_code==200,pdf.text
+    text=' '.join(' '.join(p.extract_text() for p in PdfReader(BytesIO(pdf.content)).pages).split())
+    assert 'FIM MATERIAL' in text
+    assert 'Materialfictício' not in text and 'item.Material' not in text

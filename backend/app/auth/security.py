@@ -47,6 +47,7 @@ def admin(user: User = Depends(current_user)):
 
 
 def operator(user: User = Depends(current_user)):
+    # Only ADMIN and OPERADOR ("Usuário comum") exist; reject any unknown stored value.
     if user.role not in ('ADMIN', 'OPERADOR'):
-        raise HTTPException(403, 'Este perfil permite somente gerar novos boletins.')
+        raise HTTPException(403, 'Perfil sem permissão de acesso.')
     return user

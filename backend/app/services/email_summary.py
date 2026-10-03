@@ -14,7 +14,7 @@ def safe_metadata(value, bulletin, limit=80):
     return value[:limit]
 
 
-def email_summary(b):
+def email_summary(b, unit_short='24º BPM'):
     d = b.data
     kind = safe_metadata(d.get('occurrence_type'), b) or 'OCORRÊNCIA'
     summary = safe_metadata(d.get('occurrence_summary'), b)
@@ -33,7 +33,7 @@ def email_summary(b):
             f'Material apreendido informado: {"Sim" if d.get("seized_material") else "Não"}\n'
             f'Registrado por: {b.registered_by_name_snapshot} ({b.registered_by_username_snapshot})\n'
             f'Versão do documento: {b.current_revision}\n\nO documento completo segue em anexo.\n'
-            'Esta mensagem foi gerada automaticamente pelo BO Online 24º BPM.\n\nAtenciosamente,\n24º BPM')
+            f'Esta mensagem foi gerada automaticamente pelo BO Online {unit_short}.\n\nAtenciosamente,\n{unit_short}')
     safe_kind = unicodedata.normalize('NFKD', kind).encode('ascii', 'ignore').decode()
     safe_kind = re.sub(r'[^A-Za-z0-9_-]', '_', safe_kind)[:60]
     number = re.sub(r'[^A-Za-z0-9_-]', '_', b.bo_number)[:100]

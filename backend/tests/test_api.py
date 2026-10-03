@@ -29,7 +29,7 @@ def test_health_login_and_protected_routes(client, accounts):
 @pytest.mark.parametrize('kind,count', [('TWO_INVOLVED',2), ('FOUR_INVOLVED',4)])
 def test_issue_persist_download_email_and_audit(client, accounts, payload, monkeypatch, kind, count):
     calls = []
-    monkeypatch.setattr('app.services.bulletins.send_bulletin_pdf', lambda recipient, bo, pdf: calls.append((recipient, bo.id, pdf)) or True)
+    monkeypatch.setattr('app.services.bulletins.send_bulletin_pdf', lambda recipient, bo, pdf, *_: calls.append((recipient, bo.id, pdf)) or True)
     payload['bulletin_type'] = kind
     payload['people'] = [{} for _ in range(count)]
     payload['battalionEmail'] = 'untrusted@example.com'
@@ -71,7 +71,7 @@ def test_smtp_failure_and_resend_reuse_pdf(client, accounts, payload, monkeypatc
     assert data['battalion_email_status'] == 'SENT'
     assert client.post(f'/api/bo/{bid}/resend-email', headers=accounts['operator']['headers'], json={'target':'both'}).status_code == 403
     calls = []
-    monkeypatch.setattr('app.services.bulletins.send_bulletin_pdf', lambda recipient, bo, pdf: calls.append((recipient,pdf)) or True)
+    monkeypatch.setattr('app.services.bulletins.send_bulletin_pdf', lambda recipient, bo, pdf, *_: calls.append((recipient,pdf)) or True)
     assert client.post(f'/api/bo/{bid}/resend-email', headers=headers, json={'target':'recipient'}).status_code == 202
     assert calls == [('recipient@example.com', before)]
     assert client.get(f'/api/bo/{bid}', headers=headers).json()['recipient_email_status'] == 'SENT'

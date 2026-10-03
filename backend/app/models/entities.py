@@ -115,4 +115,22 @@ class AuditLog(Base):
     report_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey('analytical_reports.id'))
     action: Mapped[str] = mapped_column(String(80))
     result: Mapped[str] = mapped_column(String(30), default='SUCCESS')
+    # Non-sensitive context only, e.g. names of changed settings fields; never values.
+    details: Mapped[dict | None] = mapped_column(JSON)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now, index=True)
+
+
+class SystemSettings(Base):
+    """Single row (id=1). Empty columns fall back to the environment configuration."""
+    __tablename__ = 'system_settings'
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    unit_name: Mapped[str | None] = mapped_column(String(150))
+    unit_short_name: Mapped[str | None] = mapped_column(String(60))
+    unit_city: Mapped[str | None] = mapped_column(String(100))
+    battalion_email: Mapped[str | None] = mapped_column(String(254))
+    reply_to_email: Mapped[str | None] = mapped_column(String(254))
+    signatory_name: Mapped[str | None] = mapped_column(String(150))
+    signatory_rank: Mapped[str | None] = mapped_column(String(100))
+    signatory_title: Mapped[str | None] = mapped_column(String(150))
+    updated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    updated_by: Mapped[uuid.UUID | None] = mapped_column(ForeignKey('users.id'))

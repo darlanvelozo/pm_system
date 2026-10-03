@@ -13,11 +13,26 @@ def filename(number):
     return f'BO_{safe}.pdf'
 
 
-def send_bulletin_pdf(recipient, bulletin, pdf_bytes):
-    return send_document_pdf(recipient, pdf_bytes, *email_summary(bulletin))
+def send_bulletin_pdf(recipient, bulletin, pdf_bytes, options=None):
+    options = options or {}
+    return send_document_pdf(recipient, pdf_bytes, *email_summary(bulletin, options.get('unit_short') or '24º BPM'), options.get('reply_to'))
 
 
-def send_document_pdf(recipient, pdf_bytes, subject, body, attachment):
+def provider_status(cfg=None):
+    """Booleans only: never expose keys, passwords or tokens."""
+    cfg = cfg or settings()
+    sender = {'gmail_api': cfg.gmail_from, 'brevo': cfg.brevo_from, 'smtp': cfg.smtp_from}[cfg.email_provider]
+    credentials = {'smtp': bool(cfg.smtp_host), 'brevo': bool(cfg.brevo_api_key),
+                   'gmail_api': all((cfg.gmail_client_id, cfg.gmail_client_secret, cfg.gmail_refresh_token))}[cfg.email_provider]
+    return {'provider': cfg.email_provider, 'sender_configured': bool(sender), 'credentials_configured': credentials,
+            'configured': bool(sender) and credentials}
+
+
+def send_document_pdf(recipient, pdf_bytes, subject, body, attachment, reply_to=None):
+    return send_message(recipient, subject, body, pdf_bytes, attachment, reply_to)
+
+
+def send_message(recipient, subject, body, pdf_bytes=None, attachment=None, reply_to=None):
     cfg = settings()
     if cfg.email_provider == 'smtp' and (not cfg.smtp_host or not cfg.smtp_from):
         return False
@@ -25,8 +40,11 @@ def send_document_pdf(recipient, pdf_bytes, subject, body, attachment):
     message['Subject'] = subject
     message['From'] = {'gmail_api': cfg.gmail_from, 'brevo': cfg.brevo_from, 'smtp': cfg.smtp_from}[cfg.email_provider]
     message['To'] = recipient
+    if reply_to:
+        message['Reply-To'] = reply_to
     message.set_content(body)
-    message.add_attachment(pdf_bytes, maintype='application', subtype='pdf', filename=attachment)
+    if pdf_bytes is not None:
+        message.add_attachment(pdf_bytes, maintype='application', subtype='pdf', filename=attachment)
     if cfg.email_provider == 'gmail_api':
         return send_gmail_message(cfg, message)
     if cfg.email_provider == 'brevo':
@@ -56,12 +74,14 @@ def send_brevo_message(cfg, message):
         'to': [{'email': str(message['To'])}],
         'subject': str(message['Subject']),
         'textContent': message.get_body(preferencelist=('plain',)).get_content(),
-        'attachment': [{'name': part.get_filename(),
-                        'content': base64.b64encode(part.get_payload(decode=True)).decode('ascii')}
-                       for part in message.iter_attachments()],
     }
-    if cfg.brevo_reply_to:
-        payload['replyTo'] = {'email': cfg.brevo_reply_to}
+    attachments = [{'name': part.get_filename(), 'content': base64.b64encode(part.get_payload(decode=True)).decode('ascii')}
+                   for part in message.iter_attachments()]
+    if attachments:
+        payload['attachment'] = attachments
+    reply_to = message['Reply-To'] or cfg.brevo_reply_to
+    if reply_to:
+        payload['replyTo'] = {'email': str(reply_to)}
     try:
         with httpx.Client(timeout=20) as client:
             response = client.post('https://api.brevo.com/v3/smtp/email',

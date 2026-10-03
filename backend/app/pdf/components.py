@@ -6,7 +6,7 @@ from reportlab.platypus import Image, Paragraph, Table, TableStyle
 from app.core.config import settings
 
 WIDTH = 563
-STYLE = ParagraphStyle('cell', fontName='Helvetica', fontSize=8, leading=10, wordWrap='CJK')
+STYLE = ParagraphStyle('cell', fontName='Helvetica', fontSize=8, leading=10)
 BODY = ParagraphStyle('body', parent=STYLE, fontSize=10, leading=14, spaceAfter=4)
 
 

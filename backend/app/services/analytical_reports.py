@@ -5,15 +5,15 @@ from datetime import datetime
 from zoneinfo import ZoneInfo
 from fastapi import HTTPException
 from sqlalchemy import select, text
-from app.core.config import settings
 from app.db.session import SessionLocal
 from app.models.entities import User, now
 from app.models.analytical_report import AnalyticalReport, AnalyticalReportRevision, AnalyticalReportSequence
-from app.pdf.analytical_report import generate_report_pdf, authority_snapshot, LAYOUT_VERSION
+from app.pdf.analytical_report import generate_report_pdf, LAYOUT_VERSION
 from app.services.audit import audit
 from app.services.email_service import send_document_pdf
 from app.services.email_summary import safe_metadata
 from app.services.storage import DatabaseStorage
+from app.services.system_settings import authority as authority_of, effective_settings, stored_reply_to
 
 
 def next_report_number(db, instant=None):
@@ -66,9 +66,10 @@ def emit(db, report, data, actor, reason='Emissão inicial'):
         report.registered_by_name_snapshot = creator.name
         report.registered_by_username_snapshot = creator.username or creator.email
     version = report.current_revision + 1
-    authority = authority_snapshot()
+    unit = effective_settings(db)
+    authority = authority_of(unit)
     content = generate_report_pdf(data, report.report_number, version,
-        f'{report.registered_by_name_snapshot} ({report.registered_by_username_snapshot})', authority)
+        f'{report.registered_by_name_snapshot} ({report.registered_by_username_snapshot})', authority, unit=unit)
     key = f'analytical-reports/{report.id}/v{version}.pdf'
     DatabaseStorage(db).put(key, content)
     db.add(AnalyticalReportRevision(report_id=report.id, version=version, created_by=actor.id,
@@ -84,7 +85,7 @@ def emit(db, report, data, actor, reason='Emissão inicial'):
     audit(db, actor.id, 'ANALYTICAL_REPORT_PDF_GENERATED', report_id=report.id)
 
 
-def email_summary(report):
+def email_summary(report, unit_short='24º BPM'):
     data = report.data
     kind = safe_metadata(data.get('occurrence_type'), report)
     city = safe_metadata(data.get('closing_location'), report)
@@ -97,7 +98,7 @@ def email_summary(report):
             f'Local de emissão (município): {city}\n'
             f'Registrado por: {report.registered_by_name_snapshot} ({report.registered_by_username_snapshot})\n'
             f'Versão: {report.current_revision}\n\nO documento completo segue em anexo.\n'
-            'Mensagem gerada automaticamente pelo BO Online 24º BPM.')
+            f'Mensagem gerada automaticamente pelo BO Online {unit_short}.')
     safe_kind = re.sub(r'[^A-Za-z0-9_-]', '_', unicodedata.normalize('NFKD', kind).encode('ascii', 'ignore').decode())[:60]
     attachment = f'RELATORIO_ANALITICO_{report.report_number.replace("/", "-")}_{safe_kind}_v{report.current_revision}.pdf'
     return subject, body, attachment
@@ -111,9 +112,11 @@ def deliver(report_id, actor_id, target='both'):
             r = db.scalar(select(AnalyticalReport).where(AnalyticalReport.id == report_id).with_for_update())
             if not r or r.status != 'ISSUED' or getattr(r, f'{destination}_email_status') != 'PENDING':
                 continue
-            recipient = str(settings().battalion_email) if destination == 'battalion' else r.recipient_email
+            unit = effective_settings(db)
+            recipient = unit['battalion_email'] if destination == 'battalion' else r.recipient_email
             try:
-                sent = send_document_pdf(recipient, DatabaseStorage(db).get(r.pdf_storage_key), *email_summary(r))
+                sent = send_document_pdf(recipient, DatabaseStorage(db).get(r.pdf_storage_key),
+                                         *email_summary(r, unit['unit_short_name']), stored_reply_to(db))
             except (FileNotFoundError, OSError):
                 sent = False
             result = 'SENT' if sent else 'FAILED'
