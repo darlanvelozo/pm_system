@@ -4,7 +4,7 @@ O módulo é separado dos BOs e das estatísticas. Usa a mesma API FastAPI, cone
 
 ## Fontes analisadas em 30/09/2026
 
-O PDF fornecido, de duas páginas, é a referência visual: cabeçalho institucional, tabela, relato, providências, local/data e autoridade. Foi inspecionado por extração de texto e imagens das duas páginas. Nenhum PDF oficial ou assinatura foi versionado. O brasão do 24º BPM fornecido pelo usuário é utilizado sem alteração, junto ao emblema da PMMA já existente. Não se reproduziu a marca comemorativa do PDF como se fosse um novo asset oficial.
+O PDF fornecido, de duas páginas, é a referência visual: cabeçalho institucional, tabela, relato, providências, local/data e autoridade. Foi inspecionado por extração de texto e imagens das duas páginas. Nenhum PDF oficial ou assinatura foi versionado. O brasão do 24º BPM fornecido pelo usuário é utilizado sem alteração. Desde o layout `2026.2`, a pedido do batalhão, o cabeçalho segue o modelo atual: logotipo comemorativo “Polícia Militar do Maranhão 190 anos” à esquerda (`pmma-190-anos.jpg`), brasão do Estado do Maranhão centralizado acima do texto (`brasao-maranhao.png`) e brasão do 24º BPM à direita; título sublinhado, seções “RELATO DA OCORRÊNCIA” e “PROVIDÊNCIAS ADOTADAS” centralizadas, células brancas, bloco final com local, data e hora (HH:MM:SS) à esquerda e assinatura digitalizada opcional, posto/nome e cargo à direita, e rodapé com traço e endereço/contato configuráveis. O emblema da PMMA (`emblem.png`) continua apenas no BO. A assinatura do comandante não é versionada: é enviada pelo administrador em Configurações e fica só no banco.
 
 O [Google Forms](https://docs.google.com/forms/d/e/1FAIpQLScOXN7WJ86MUZWGY2Mm8ZL4iLAjbSZa1k1scqr6m8V9k2WKqA/viewform) foi lido diretamente por HTTPS após a ferramenta de navegação não conseguir abri-lo. Apenas leitura: nenhuma resposta foi enviada. A estrutura pública permitiu identificar três seções: identificação, Dados da ocorrência e Descrição da ocorrência. Não foi encontrada ramificação condicional nas perguntas lidas.
 
@@ -33,22 +33,25 @@ O campo LOCAL final do PDF é apresentado como **Local de emissão (município)*
 
 ## Matriz de permissões
 
-| Recurso | ADMIN (Administrador) | OPERADOR (Usuário comum) |
-|---|---|---|
-| Novo BO / prévia / emissão | Sim | Sim |
-| Editar rascunho BO | Todos | Próprio |
-| Consultar BOs / emitidos / baixar PDF | Todos | Próprios |
-| Corrigir / cancelar / remover BO | Sim | Não |
-| Versões e reenvio de BO | Sim | Não |
-| Novo relatório / prévia / emissão | Sim | Sim |
-| Consultar relatório / PDF | Todos | Próprios |
-| Editar rascunho de relatório | Todos | Próprio |
-| Corrigir / cancelar / remover / versões / reenviar relatório | Sim | Não |
-| Usuários / auditoria / estatísticas / Configurações | Sim | Não |
+| Recurso | ADMIN (Administrador) | OPERADOR (Usuário comum) | BASICO (Usuário básico) |
+|---|---|---|---|
+| Novo BO / prévia / emissão | Sim | Sim | Sim (recebe só o comprovante) |
+| Editar rascunho BO | Todos | Próprio | Próprio |
+| Consultar BOs / emitidos / baixar PDF | Todos | Próprios | Não |
+| Corrigir / cancelar / remover BO | Sim | Não | Não |
+| Versões e reenvio de BO | Sim | Não | Não |
+| Novo relatório / prévia / emissão | Sim | Sim | Sim (recebe só o comprovante) |
+| Consultar relatório / PDF | Todos | Próprios | Não |
+| Editar rascunho de relatório | Todos | Próprio | Próprio |
+| Corrigir / cancelar / remover / versões / reenviar relatório | Sim | Não | Não |
+| Sugestões de registros anteriores | Sim | Sim | Não |
+| Usuários / auditoria / estatísticas / Configurações | Sim | Não | Não |
 
-O perfil GERADOR (“Usuário simples”) foi removido em 02/10/2026. A migration `20261002_two_roles` converte essas contas em Usuário comum (`OPERADOR`); a API rejeita `GERADOR` com 422 e qualquer valor de perfil desconhecido recebe 403.
+**Usuário básico** (`BASICO`, criado em 06/10/2026): pode criar, salvar e continuar os próprios rascunhos de BO e de relatório, ver a prévia do PDF (dos próprios dados ainda não emitidos) e emitir. Depois da emissão vê apenas o comprovante: protocolo/número, situação e data, sem dados nem PDF (o PDF segue por e-mail). Listagens só aceitam `status=DRAFT`; abrir, baixar, verificar ou consultar versões de um registro emitido ou cancelado, mesmo próprio, retorna 403. A coluna `users.role` é texto (`String(20)`), portanto o novo valor não exige migration.
 
-ADMIN continua podendo editar nome real, login, perfil, senha e acesso. Não é permitido remover o próprio acesso administrativo ou desativar/rebaixar o último ADMIN ativo. O papel vem do banco em cada requisição, sem confiar no menu ou num papel armazenado no JWT.
+O perfil GERADOR (“Usuário simples”) foi removido em 02/10/2026; o Usuário básico reaproveita aquele desenho de comprovante mínimo, agora também para relatórios. A migration `20261002_two_roles` converte essas contas em Usuário comum (`OPERADOR`); a API rejeita `GERADOR` com 422 e qualquer valor de perfil desconhecido recebe 403.
+
+ADMIN continua podendo editar nome real, login, perfil, senha e acesso. Não é permitido remover o próprio acesso administrativo ou desativar/rebaixar (para Usuário comum ou básico) o último ADMIN ativo. O papel vem do banco em cada requisição, sem confiar no menu ou num papel armazenado no JWT.
 
 ## Dados e ciclo de vida
 
@@ -123,4 +126,4 @@ O administrador define o signatário em **Administração → Configurações** 
 | `REPORT_SIGNATORY_RANK` | Posto/graduação |
 | `REPORT_SIGNATORY_TITLE` | Cargo/função |
 
-Sem essas configurações o bloco permanece sem identificação de autoridade. Nenhum nome real nem assinatura manuscrita foi copiado do modelo. Cada nova versão captura a configuração vigente; mudanças posteriores não reescrevem PDFs antigos. Nenhuma nova variável é necessária no Vercel. Mantenha a configuração de banco, e-mail e CORS existente.
+Sem essas configurações o bloco permanece sem identificação de autoridade. Nenhum nome real nem assinatura manuscrita foi copiado do modelo nem versionado; a assinatura digitalizada, quando necessária, é enviada pelo administrador em Configurações e fica só no banco. As linhas de endereço/contato do rodapé usam `UNIT_FOOTER_ADDRESS` e `UNIT_FOOTER_CONTACT` como padrão. Cada nova versão captura a configuração vigente (a revisão guarda só o SHA-256 da assinatura); mudanças posteriores não reescrevem PDFs antigos. Nenhuma nova variável é necessária no Vercel. Mantenha a configuração de banco, e-mail e CORS existente.

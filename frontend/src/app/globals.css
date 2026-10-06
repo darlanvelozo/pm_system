@@ -119,3 +119,5 @@ select{-webkit-appearance:none;appearance:none;padding-right:38px;background:whi
   .guide a{color:inherit;text-decoration:none}
   .quick-guide{font-size:10pt}.quick-grid{grid-template-columns:repeat(2,1fr)}
 }
+.basic-actions .model-option strong{display:flex;align-items:center;gap:8px}.basic-drafts{list-style:none;padding:0;margin:0 0 20px}.basic-drafts li{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:12px 0;border-bottom:1px solid var(--line);font-size:12px;overflow-wrap:anywhere}.basic-drafts li span{display:flex;flex-direction:column;gap:4px}.basic-drafts small{color:var(--muted)}.basic-drafts strong{display:flex;align-items:center;gap:8px;font-weight:600}.receipt h2{display:flex;align-items:center;gap:8px}
+@media(max-width:600px){.basic-drafts li{flex-direction:column;align-items:stretch}}

@@ -98,18 +98,22 @@ O JWT permanece apenas em memória e expira em 30 minutos. Após recarregar a p�
 
 ## Permissões
 
-Existem somente dois perfis: **Usuário comum** (valor `OPERADOR` no banco) e **Administrador** (`ADMIN`). O antigo perfil GERADOR (“Usuário simples”) foi removido; a migration `20261002_two_roles` converte essas contas em Usuário comum.
+Existem três perfis: **Usuário básico** (valor `BASICO` no banco), **Usuário comum** (`OPERADOR`) e **Administrador** (`ADMIN`). O Usuário básico registra documentos, mas não acessa os já emitidos. O antigo perfil GERADOR (“Usuário simples”) foi removido; a migration `20261002_two_roles` converte essas contas em Usuário comum.
 
-| Recurso | Usuário comum | Administrador |
-|---|---|---|
-| Criar, revisar e emitir BO e Relatório Analítico | Sim | Sim |
-| Consultar e baixar | Próprios registros | Todos |
-| Alterar rascunho | Próprios | Todos |
-| Corrigir emitido / versões / cancelar / remover | Não | Sim |
-| Reenviar e-mail | Não | Sim |
-| Gerenciar usuários / auditoria / estatísticas | Não | Sim |
-| Configurações e diagnóstico | Não | Sim |
-| Guia de uso (Ajuda) | Guia comum | Guia comum + guia do administrador |
+| Recurso | Usuário básico | Usuário comum | Administrador |
+|---|---|---|---|
+| Criar, prévia do PDF e emitir BO e Relatório Analítico | Sim | Sim | Sim |
+| Salvar e continuar rascunho | Próprios | Próprios | Todos |
+| Após emitir | Só comprovante (protocolo/número, situação, data) | Registro completo | Registro completo |
+| Listar / buscar / consultar emitidos e cancelados | Não (nem os próprios) | Próprios registros | Todos |
+| Baixar PDF / verificar / versões | Não | Próprios (PDF e verificação) | Todos |
+| Sugestões de registros anteriores (`/api/operational-options`) | Não | Sim | Sim |
+| Corrigir emitido / cancelar / remover / reenviar e-mail | Não | Não | Sim |
+| Gerenciar usuários / auditoria / estatísticas | Não | Não | Sim |
+| Configurações e diagnóstico | Não | Não | Sim |
+| Guia de uso (Ajuda) | Guia comum + seção do Usuário básico | Guia comum | Guia comum + guia do administrador |
+
+A API impõe as regras: para `BASICO`, `GET /api/bo` e `GET /api/analytical-reports` só aceitam `status=DRAFT` (lista “Meus rascunhos”), registros não rascunho retornam 403, registros de terceiros 404, e a emissão devolve apenas o comprovante.
 
 A regra de consulta conservadora precisa de homologação institucional. O protocolo é gerado na primeira emissão em America/Fortaleza, com sequência diária atômica e unicidade global. E-mail institucional vem exclusivamente da configuração do backend; `battalionEmail` enviado pelo cliente é ignorado.
 
@@ -117,7 +121,7 @@ A regra de consulta conservadora precisa de homologação institucional. O proto
 
 ReportLab produz A4, tabelas com bordas, títulos cinza, bandeira, emblema, classificação, características, lesões, narrativa e assinatura visual. O layout dinâmico está em `backend/app/pdf/layout.py`; os imports de templates antigos delegam a ele. Texto extenso expande os blocos e gera páginas adicionais, com número do BO e registrador. Nenhuma narrativa é truncada para caber em duas páginas.
 
-Os dois PDFs oficiais foram examinados localmente. **Não estão no repositório**, assim como imagens de páginas, texto extraído e dados pessoais. Apenas bandeira e emblema isolados, conferidos visualmente, são usados como ativos institucionais. O emblema herdou a baixa resolução do modelo; substituir por arte oficial de melhor qualidade quando disponível.
+Os dois PDFs oficiais foram examinados localmente. **Não estão no repositório**, assim como imagens de páginas, texto extraído e dados pessoais. Apenas bandeira e emblema isolados, conferidos visualmente, são usados como ativos institucionais no BO. O Relatório Analítico usa o logotipo “PMMA 190 anos”, o brasão do Estado do Maranhão e o brasão do 24º BPM, conforme o modelo atual do batalhão; a assinatura digitalizada do signatário não é versionada (é enviada em Configurações e fica só no banco). O emblema herdou a baixa resolução do modelo; substituir por arte oficial de melhor qualidade quando disponível.
 
 `StorageService` define o contrato; a implementação `DatabaseStorage` grava o PDF como binário no PostgreSQL na mesma transação da emissão. Não depende do disco efêmero do Render. A API nunca expõe chave ou URL pública de armazenamento. Uma futura implementação S3/R2 deverá preservar autorização e consistência entre arquivo e metadados.
 
@@ -146,6 +150,7 @@ Agende esse comando na infraestrutura conforme a operação. Sem um worker exter
 | Backend | `JWT_SECRET` | Segredo aleatório, mínimo 32 caracteres |
 | Backend | `BATTALION_EMAIL` | Destino institucional padrão (Configurações pode sobrepor) |
 | Backend | `UNIT_NAME`, `UNIT_SHORT_NAME`, `UNIT_CITY` | Padrões da unidade nos rodapés/e-mails (Configurações pode sobrepor) |
+| Backend | `UNIT_FOOTER_ADDRESS`, `UNIT_FOOTER_CONTACT` | Linhas de endereço/contato do rodapé do Relatório Analítico; vazias mantêm “unidade · município” (Configurações pode sobrepor) |
 | Backend | `REPORT_SIGNATORY_NAME`, `_RANK`, `_TITLE` | Signatário padrão do Relatório Analítico (Configurações pode sobrepor) |
 | Backend | `SMTP_HOST`, `SMTP_PORT` | Servidor e porta SMTP |
 | Backend | `SMTP_USERNAME`, `SMTP_PASSWORD` | Autenticação SMTP |
@@ -244,7 +249,7 @@ A aplicação também possui Relatórios Analíticos, com sequência anual indep
 
 # Configurações (ADMIN)
 
-Em **Administração → Configurações** o administrador edita, sem novo deploy: dados da unidade usados nos rodapés de PDF e nos e-mails, e-mail institucional (cópia do batalhão) e reply-to, e o signatário do Relatório Analítico. Os valores ficam na tabela `system_settings`; campo vazio usa a variável de ambiente correspondente. PDFs já emitidos não mudam. A mesma página mostra o diagnóstico (provedor de e-mail configurado ou não, banco, migration, versão, ambiente, URL do QR) e envia e-mail de teste. Detalhes em [Configurações](docs/settings.md).
+Em **Administração → Configurações** o administrador edita, sem novo deploy: dados da unidade usados nos rodapés de PDF e nos e-mails, e-mail institucional (cópia do batalhão) e reply-to, o endereço/contato do rodapé e o signatário do Relatório Analítico (com assinatura digitalizada opcional, guardada só no banco). Os valores ficam na tabela `system_settings`; campo vazio usa a variável de ambiente correspondente. PDFs já emitidos não mudam. A mesma página mostra o diagnóstico (provedor de e-mail configurado ou não, banco, migration, versão, ambiente, URL do QR) e envia e-mail de teste. Detalhes em [Configurações](docs/settings.md).
 
 # Guia de uso
 

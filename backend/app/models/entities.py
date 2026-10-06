@@ -132,5 +132,10 @@ class SystemSettings(Base):
     signatory_name: Mapped[str | None] = mapped_column(String(150))
     signatory_rank: Mapped[str | None] = mapped_column(String(100))
     signatory_title: Mapped[str | None] = mapped_column(String(150))
+    footer_address: Mapped[str | None] = mapped_column(String(200))
+    footer_contact: Mapped[str | None] = mapped_column(String(200))
+    # Scanned signature (PNG/JPEG); deferred so settings reads never load the bytes.
+    signature_image: Mapped[bytes | None] = mapped_column(LargeBinary, deferred=True)
+    signature_mime: Mapped[str | None] = mapped_column(String(20))
     updated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     updated_by: Mapped[uuid.UUID | None] = mapped_column(ForeignKey('users.id'))

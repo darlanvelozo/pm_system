@@ -38,6 +38,9 @@ class Settings(BaseSettings):
     unit_name: str = '24º Batalhão de Polícia Militar'
     unit_short_name: str = '24º BPM'
     unit_city: str = 'Coroatá/MA'
+    # Analytical report footer lines (empty: keep the "unit · city" footer).
+    unit_footer_address: str = ''
+    unit_footer_contact: str = ''
 
     @field_validator('jwt_secret')
     @classmethod

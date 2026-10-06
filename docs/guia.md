@@ -3,6 +3,7 @@
 O guia ilustrado fica dentro do sistema, no menu **Ajuda / Guia de uso** (no celular: Menu → Ajuda / Guia de uso, ou Conta → Ajuda / Guia de uso). O conteúdo depende do perfil:
 
 - **Usuário comum**: guia do usuário (acesso, painel, BO em 8 etapas, rascunhos, prévia, emissão, e-mails, PDF, verificação, Relatórios Analíticos, celular/PWA, privacidade, FAQ e anexos).
+- **Usuário básico**: o mesmo guia do usuário, com aviso no topo e a seção 15 “Perfil Usuário básico” (início restrito, Meus rascunhos, comprovante após emissão, sem consulta ou download). Sem capturas próprias.
 - **Administrador**: abas “Guia do usuário” e “Guia do administrador” (usuários, correção, cancelamento/remoção, reenvio, auditoria, estatísticas, Configurações, rotina operacional, FAQ).
 - **Público** em `/guia` (link no rodapé do login): somente o guia do usuário. Todas as imagens usam dados fictícios. Guia rápido de uma página em `/guia/rapido`.
 

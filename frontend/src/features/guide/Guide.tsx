@@ -7,7 +7,7 @@ import shots from './screenshots.json';
 type Shot = { src: string; width: number; height: number };
 const manifest = shots as Record<string, Shot>;
 type Zoom = { src: string; alt: string } | null;
-export type Audience = 'common' | 'admin' | 'public';
+export type Audience = 'common' | 'admin' | 'public' | 'basic';
 
 function Lightbox({ zoom, onClose }: { zoom: NonNullable<Zoom>; onClose: () => void }) {
   const ref = useRef<HTMLDialogElement>(null);
@@ -41,6 +41,7 @@ const commonToc: [string, string][] = [
   ['guia-email', 'Status de e-mail e falhas de envio'], ['guia-baixar', 'Baixar o PDF'], ['guia-verificar', 'Verificar autenticidade (QR)'],
   ['guia-relatorios', 'Relatórios Analíticos passo a passo'], ['guia-celular', 'Uso no celular e instalação como app'],
   ['guia-privacidade', 'Privacidade e boas práticas'], ['guia-faq', 'Perguntas frequentes e problemas'], ['guia-anexos', 'Anexos para download'],
+  ['guia-basico', 'Perfil Usuário básico'],
 ];
 const adminToc: [string, string][] = [
   ['admin-usuarios', 'Gerenciar usuários'], ['admin-corrigir', 'Corrigir BO emitido'], ['admin-cancelar', 'Cancelar e remover'],
@@ -145,6 +146,11 @@ function CommonGuide({ zoom, publicView }: { zoom: (z: Zoom) => void; publicView
         <li><a href="/guia/anexos/guia-rapido.pdf" download><Download size={16} aria-hidden="true"/> Guia rápido de 1 página para imprimir (PDF)</a> {publicView ? <>· <Link href="/guia/rapido">ver online</Link></> : <>· <a href="/guia/rapido" target="_blank" rel="noopener">ver online</a></>}</li>
       </ul>
     </Section>
+    <Section id="guia-basico" title="15. Perfil Usuário básico">
+      <p>O <strong>Usuário básico</strong> registra documentos, mas não consulta os que já foram emitidos. A tela inicial mostra apenas <strong>Novo boletim</strong>, <strong>Novo Relatório Analítico</strong> e <strong>Meus rascunhos</strong>.</p>
+      <ul><li>Pode preencher, salvar e continuar os <strong>próprios rascunhos</strong> de BO e de Relatório Analítico, ver a prévia do PDF e emitir.</li><li>Após emitir, aparece somente o <strong>comprovante</strong>: protocolo/número, situação e data. Os dados e o PDF seguem por e-mail para o batalhão e para o destinatário informado.</li><li>Não vê painel de boletins, lista de relatórios, documentos emitidos ou cancelados (nem os próprios), PDFs, versões, sugestões de registros anteriores, estatísticas ou Administração.</li></ul>
+      <Callout kind="info" title="Precisa consultar um documento emitido?"><p>Anote o protocolo do comprovante e peça ao administrador ou a um Usuário comum responsável.</p></Callout>
+    </Section>
   </>;
 }
 
@@ -153,7 +159,7 @@ function AdminGuide({ zoom }: { zoom: (z: Zoom) => void }) {
     <Toc items={adminToc}/>
     <Section id="admin-usuarios" title="A1. Gerenciar usuários">
       <p>Em <strong>Administração → Usuários</strong>:</p>
-      <ol className="guide-steps"><li><strong>Criar</strong>: nome completo, nome de usuário (login, sem espaços), senha inicial (mínimo 12 caracteres) e perfil. Entregue login e senha pessoalmente.</li><li><strong>Perfis</strong>: <em>Usuário comum</em> cria e emite BOs e Relatórios e vê os próprios; <em>Administrador</em> vê tudo e acessa Administração.</li><li><strong>Editar</strong>: altere nome, login, perfil, acesso ou defina nova senha (em branco mantém a atual).</li><li><strong>Desativar</strong>: bloqueia o acesso imediatamente, preservando o histórico do usuário.</li></ol>
+      <ol className="guide-steps"><li><strong>Criar</strong>: nome completo, nome de usuário (login, sem espaços), senha inicial (mínimo 12 caracteres) e perfil. Entregue login e senha pessoalmente.</li><li><strong>Perfis</strong>: <em>Usuário básico</em> só cria e emite BOs e Relatórios (continua os próprios rascunhos, mas não consulta nem baixa documentos emitidos); <em>Usuário comum</em> cria e emite BOs e Relatórios e vê os próprios; <em>Administrador</em> vê tudo e acessa Administração.</li><li><strong>Editar</strong>: altere nome, login, perfil, acesso ou defina nova senha (em branco mantém a atual).</li><li><strong>Desativar</strong>: bloqueia o acesso imediatamente, preservando o histórico do usuário.</li></ol>
       <Figure name="admin-usuarios" alt="Tela Usuários com formulário Novo usuário e lista de usuários fictícios" caption="Cadastro e lista de usuários." onZoom={zoom}/>
       <Figure name="admin-editar-usuario" alt="Janela Editar usuário com perfil, acesso e nova senha" caption="Editar usuário e redefinir senha." onZoom={zoom}/>
       <Callout kind="warn" title="Último administrador"><p>O sistema impede desativar ou rebaixar o último administrador ativo e impede que você remova o próprio acesso administrativo. Mantenha ao menos dois administradores.</p></Callout>
@@ -219,6 +225,7 @@ export function Guide({ audience }: { audience: Audience }) {
   }, []);
   return <div className="guide">
     <div className="page-heading guide-heading"><div><small className="eyebrow">AJUDA</small><h1>Guia de uso do BO Online</h1><p>Passo a passo para registrar ocorrências, emitir PDFs e resolver problemas comuns.{audience === 'public' && ' Esta é a versão pública, com exemplos fictícios.'}</p></div><button type="button" className="secondary no-print" onClick={() => window.print()}><Printer size={16} aria-hidden="true"/> Imprimir guia</button></div>
+    {audience === 'basic' && <p className="guide-note">Seu perfil é <strong>Usuário básico</strong>: veja a seção <a href="#guia-basico">Perfil Usuário básico</a>. Painel, consulta e download descritos abaixo não se aplicam a ele.</p>}
     {admin && <div className="guide-tabs no-print" role="tablist" aria-label="Guias disponíveis">{(['common', 'admin'] as const).map(t => <button key={t} type="button" role="tab" id={`tab-${t}`} aria-controls={`panel-${t}`} aria-selected={tab === t} tabIndex={tab === t ? 0 : -1} className={tab === t ? 'active' : ''} onClick={() => setTab(t)} onKeyDown={e => { if (e.key === 'ArrowRight' || e.key === 'ArrowLeft') { const next = t === 'common' ? 'admin' : 'common'; setTab(next); document.getElementById(`tab-${next}`)?.focus(); } }}>{t === 'common' ? <><BookOpen size={16} aria-hidden="true"/> Guia do usuário</> : <><ShieldCheck size={16} aria-hidden="true"/> Guia do administrador</>}</button>)}</div>}
     <div role={admin ? 'tabpanel' : undefined} id={admin ? `panel-${tab}` : undefined} aria-labelledby={admin ? `tab-${tab}` : undefined}>
       {tab === 'admin' && admin ? <AdminGuide zoom={setZoom}/> : <CommonGuide zoom={setZoom} publicView={audience === 'public'}/>}

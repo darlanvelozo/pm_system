@@ -1,24 +1,26 @@
 'use client';
 import { useEffect, useState } from 'react';
-import { Building2, Mail, PenLine, Activity, RotateCcw, Save, Send } from 'lucide-react';
-import { api, ApiError } from '@/services/api';
+import { Building2, Mail, PenLine, Activity, RotateCcw, Save, Send, Trash2, Upload } from 'lucide-react';
+import { api, ApiError, pdfUrl } from '@/services/api';
 import { settingFields, type Diagnostics, type SettingField, type SystemSettings } from '@/types/api';
 
 type Values = Record<SettingField, string>;
 const empty = Object.fromEntries(settingFields.map(f => [f, ''])) as Values;
-export const settingLabels: Record<SettingField, string> = {unit_name: 'Nome da unidade', unit_short_name: 'Nome abreviado', unit_city: 'Município/UF', battalion_email: 'E-mail do batalhão', reply_to_email: 'E-mail para respostas (reply-to)', signatory_rank: 'Posto/graduação', signatory_name: 'Nome do signatário', signatory_title: 'Cargo/função'};
+export const settingLabels: Record<SettingField, string> = {unit_name: 'Nome da unidade', unit_short_name: 'Nome abreviado', unit_city: 'Município/UF', footer_address: 'Endereço do rodapé', footer_contact: 'Contato do rodapé', battalion_email: 'E-mail do batalhão', reply_to_email: 'E-mail para respostas (reply-to)', signatory_rank: 'Posto/graduação', signatory_name: 'Nome do signatário', signatory_title: 'Cargo/função'};
 const help: Record<SettingField, string> = {
   unit_name: 'Por extenso. Aparece no rodapé do Relatório Analítico, junto do município.',
   unit_short_name: 'Usado no rodapé de cada página do BO (“… • Página N”), no autor dos PDFs e na assinatura dos e-mails.',
   unit_city: 'Ex.: Coroatá/MA. Completa o rodapé do Relatório Analítico.',
+  footer_address: 'Primeira linha do rodapé do Relatório Analítico, abaixo do traço. Ex.: endereço, CEP e telefones.',
+  footer_contact: 'Segunda linha do rodapé do Relatório Analítico. Ex.: e-mail da unidade. Com as duas vazias, o rodapé usa “unidade · município”.',
   battalion_email: 'Recebe uma cópia de todo BO e Relatório Analítico emitido. Vale para os próximos envios e reenvios.',
   reply_to_email: 'Endereço que recebe as respostas aos e-mails enviados. Quando vazio, só o Brevo usa o padrão do servidor.',
   signatory_rank: 'Ex.: TEN CEL PM. Fica antes do nome no bloco de assinatura do Relatório Analítico.',
-  signatory_name: 'Autoridade que assina o Relatório Analítico. A assinatura manuscrita não é reproduzida.',
+  signatory_name: 'Autoridade que assina o Relatório Analítico. A assinatura digitalizada, se houver, fica acima do nome.',
   signatory_title: 'Ex.: Comandante do 24º BPM. Linha abaixo do nome.',
 };
 const groups: {title: string; icon: React.ReactNode; description: string; fields: SettingField[]}[] = [
-  {title: 'Unidade', icon: <Building2 size={20}/>, description: 'Identificação usada em rodapés de PDF e e-mails. O cabeçalho oficial (Estado, PMMA, brasões) não muda.', fields: ['unit_name', 'unit_short_name', 'unit_city']},
+  {title: 'Unidade', icon: <Building2 size={20}/>, description: 'Identificação usada em rodapés de PDF e e-mails. O cabeçalho oficial (Estado, PMMA, brasões) não muda.', fields: ['unit_name', 'unit_short_name', 'unit_city', 'footer_address', 'footer_contact']},
   {title: 'E-mail institucional', icon: <Mail size={20}/>, description: 'Destino da cópia institucional e endereço de respostas.', fields: ['battalion_email', 'reply_to_email']},
   {title: 'Signatário do relatório analítico', icon: <PenLine size={20}/>, description: 'Bloco de assinatura impresso no final do Relatório Analítico.', fields: ['signatory_rank', 'signatory_name', 'signatory_title']},
 ];
@@ -33,6 +35,8 @@ export function Settings({ token, onDirtyChange }: { token: string; onDirtyChang
   const [busy, setBusy] = useState(false);
   const [testTo, setTestTo] = useState('');
   const [test, setTest] = useState<{sent: boolean; message: string}>();
+  const [signature, setSignature] = useState<string>();
+  const [signatureMessage, setSignatureMessage] = useState<{ok: boolean; text: string}>();
   const saved = data ? valuesOf(data) : empty;
   const dirty = !!data && settingFields.some(f => form[f].trim() !== saved[f]);
   useEffect(() => {
@@ -53,6 +57,26 @@ export function Settings({ token, onDirtyChange }: { token: string; onDirtyChang
     return () => window.removeEventListener('beforeunload', warn);
   }, [dirty, onDirtyChange]);
   useEffect(() => () => onDirtyChange?.(false), [onDirtyChange]);
+  useEffect(() => {
+    if (!data?.has_signature) return;
+    let active = true, url = '';
+    pdfUrl('/api/admin/settings/signature', token).then(u => { url = u; if (active) setSignature(u); else URL.revokeObjectURL(u); }).catch(() => undefined);
+    return () => { active = false; if (url) URL.revokeObjectURL(url); };
+  }, [data?.has_signature, data?.updated_at, token]);
+  async function signatureRequest(init: RequestInit, done: string) {
+    setBusy(true); setSignatureMessage(undefined);
+    try { const result = await api<SystemSettings>('/api/admin/settings/signature', token, init); setData(result); setSignatureMessage({ok: true, text: done}); }
+    catch(e) { setSignatureMessage({ok: false, text: e instanceof ApiError && e.status === 422 ? 'Arquivo inválido: envie uma imagem PNG ou JPG.' : e instanceof Error ? e.message : 'Erro ao salvar a assinatura.'}); }
+    finally { setBusy(false); }
+  }
+  async function uploadSignature(file?: File) {
+    if (!file) return;
+    if (!['image/png', 'image/jpeg'].includes(file.type)) return setSignatureMessage({ok: false, text: 'Envie uma imagem PNG ou JPG.'});
+    if (file.size > 500 * 1024) return setSignatureMessage({ok: false, text: 'A assinatura deve ter no máximo 500 KB.'});
+    const content = await new Promise<string>((resolve, reject) => { const reader = new FileReader(); reader.onload = () => resolve(String(reader.result)); reader.onerror = reject; reader.readAsDataURL(file); });
+    await signatureRequest({method: 'PUT', body: JSON.stringify({data_base64: content.split(',')[1] || ''})}, 'Assinatura salva. Vale para as próximas prévias, emissões e correções.');
+  }
+  function removeSignature() { return signatureRequest({method: 'DELETE'}, 'Assinatura removida. O bloco sai só com posto, nome e cargo.'); }
   function loadDiagnostics() { api<Diagnostics>('/api/admin/diagnostics', token).then(setDiag).catch(e => setError(e.message)); }
   async function save(event: React.FormEvent) {
     event.preventDefault(); setBusy(true); setError(''); setSuccess('');
@@ -71,6 +95,7 @@ export function Settings({ token, onDirtyChange }: { token: string; onDirtyChang
     finally { setBusy(false); }
   }
   const effective = (f: SettingField) => form[f].trim() || data?.defaults[f] || '';
+  const footer = [effective('footer_address'), effective('footer_contact')].filter(Boolean);
   const signer = [[effective('signatory_rank'), effective('signatory_name')].filter(Boolean).join(' '), effective('signatory_title')].filter(Boolean);
   return <div className="settings-page"><div className="page-heading"><div><small className="eyebrow">ADMINISTRAÇÃO</small><h1>Configurações</h1><p>Parâmetros de gestão usados nos PDFs e e-mails. Somente administradores acessam esta página.</p></div></div>
     <p className="notice">PDFs já emitidos não mudam: são arquivos guardados. As alterações valem para as <strong>próximas emissões, prévias, correções (nova versão) e envios</strong>. Campo vazio usa o valor padrão do servidor.</p>
@@ -78,8 +103,11 @@ export function Settings({ token, onDirtyChange }: { token: string; onDirtyChang
     {!data && !error && <p role="status">Carregando configurações…</p>}
     {data && <form onSubmit={save}>
       {groups.map(g => <section className="card settings-card" key={g.title} aria-labelledby={`settings-${g.fields[0]}`}><div className="settings-card-heading"><span className="stat-icon blue">{g.icon}</span><div><h2 id={`settings-${g.fields[0]}`}>{g.title}</h2><p>{g.description}</p></div></div>
-        <div className="form-grid">{g.fields.map(f => <div className={`field ${f === 'unit_name' || f === 'signatory_name' ? 'wide' : ''}`} key={f}><label htmlFor={`setting-${f}`}>{settingLabels[f]}</label><input id={`setting-${f}`} name={f} type={f.endsWith('email') ? 'email' : 'text'} value={form[f]} placeholder={data.defaults[f] || 'Sem valor padrão'} maxLength={{unit_name: 150, unit_short_name: 60, unit_city: 100, battalion_email: 254, reply_to_email: 254, signatory_rank: 100, signatory_name: 150, signatory_title: 150}[f]} aria-describedby={`setting-${f}-help setting-${f}-source`} onChange={e => { setForm({...form, [f]: e.target.value}); setSuccess(''); }}/><small id={`setting-${f}-help`} className="hint settings-help">{help[f]}</small><small id={`setting-${f}-source`} className="settings-source">{form[f].trim() ? <span className="badge sent">Valor personalizado</span> : <span className="badge not_sent">Usando valor padrão do servidor{data.defaults[f] ? `: ${data.defaults[f]}` : ' (vazio)'}</span>}{form[f] && <button type="button" className="text-button" onClick={() => setForm({...form, [f]: ''})}><RotateCcw size={14}/> Usar padrão</button>}</small></div>)}</div>
-        <div className="settings-preview" aria-live="polite">{g.title === 'Unidade' && <><strong>Prévia</strong><span>Rodapé do BO: “{effective('unit_short_name')} • Página 1”</span><span>Rodapé do Relatório Analítico: “{[effective('unit_name'), effective('unit_city')].filter(Boolean).join(' · ')}”</span><span>E-mails: “Mensagem gerada automaticamente pelo BO Online {effective('unit_short_name')}.”</span></>}{g.title === 'E-mail institucional' && <><strong>Prévia</strong><span>Cópia institucional para: {effective('battalion_email')}</span><span>Respostas para: {form.reply_to_email.trim() || (diag?.email.provider === 'brevo' ? `${data.defaults.reply_to_email} (padrão do Brevo)` : 'remetente do provedor (sem reply-to)')}</span></>}{g.title.startsWith('Signatário') && <><strong>Prévia do bloco de assinatura</strong>{signer.length ? signer.map(l => <span key={l}>{l}</span>) : <span>Sem signatário configurado — o bloco de assinatura sairá em branco.</span>}</>}</div>
+        <div className="form-grid">{g.fields.map(f => <div className={`field ${['unit_name', 'signatory_name', 'footer_address', 'footer_contact'].includes(f) ? 'wide' : ''}`} key={f}><label htmlFor={`setting-${f}`}>{settingLabels[f]}</label><input id={`setting-${f}`} name={f} type={f.endsWith('email') ? 'email' : 'text'} value={form[f]} placeholder={data.defaults[f] || 'Sem valor padrão'} maxLength={{unit_name: 150, unit_short_name: 60, unit_city: 100, footer_address: 200, footer_contact: 200, battalion_email: 254, reply_to_email: 254, signatory_rank: 100, signatory_name: 150, signatory_title: 150}[f]} aria-describedby={`setting-${f}-help setting-${f}-source`} onChange={e => { setForm({...form, [f]: e.target.value}); setSuccess(''); }}/><small id={`setting-${f}-help`} className="hint settings-help">{help[f]}</small><small id={`setting-${f}-source`} className="settings-source">{form[f].trim() ? <span className="badge sent">Valor personalizado</span> : <span className="badge not_sent">Usando valor padrão do servidor{data.defaults[f] ? `: ${data.defaults[f]}` : ' (vazio)'}</span>}{form[f] && <button type="button" className="text-button" onClick={() => setForm({...form, [f]: ''})}><RotateCcw size={14}/> Usar padrão</button>}</small></div>)}</div>
+        {g.title.startsWith('Signatário') && <div className="field wide"><label htmlFor="setting-signature">Assinatura digitalizada</label><input id="setting-signature" type="file" accept="image/png,image/jpeg" disabled={busy} aria-describedby="setting-signature-help" onChange={e => { void uploadSignature(e.target.files?.[0]); e.target.value = ''; }}/><small id="setting-signature-help" className="hint settings-help">PNG ou JPG de até 500 KB, de preferência com fundo branco ou transparente. Salva na hora, fica só no banco de dados e sai acima do nome no Relatório Analítico.</small><small className="settings-source">{data.has_signature ? <><span className="badge sent">Assinatura cadastrada</span><button type="button" className="text-button" disabled={busy} onClick={() => void removeSignature()}><Trash2 size={14}/> Remover assinatura</button></> : <span className="badge not_sent"><Upload size={12}/> Nenhuma assinatura: o bloco sai só com posto, nome e cargo</span>}</small>{signatureMessage && <p role="status" className={signatureMessage.ok ? 'notice' : 'error-box'}>{signatureMessage.text}</p>}</div>}
+        <div className="settings-preview" aria-live="polite">{g.title === 'Unidade' && <><strong>Prévia</strong><span>Rodapé do BO: “{effective('unit_short_name')} • Página 1”</span>{footer.length ? <span>Rodapé do Relatório Analítico (abaixo do traço): {footer.map(l => `“${l}”`).join(' / ')}</span> : <span>Rodapé do Relatório Analítico: “{[effective('unit_name'), effective('unit_city')].filter(Boolean).join(' · ')}”</span>}<span>E-mails: “Mensagem gerada automaticamente pelo BO Online {effective('unit_short_name')}.”</span></>}{g.title === 'E-mail institucional' && <><strong>Prévia</strong><span>Cópia institucional para: {effective('battalion_email')}</span><span>Respostas para: {form.reply_to_email.trim() || (diag?.email.provider === 'brevo' ? `${data.defaults.reply_to_email} (padrão do Brevo)` : 'remetente do provedor (sem reply-to)')}</span></>}{g.title.startsWith('Signatário') && <><strong>Prévia do bloco de assinatura</strong>{data.has_signature && signature && <>
+          {/* eslint-disable-next-line @next/next/no-img-element -- blob URL of the uploaded signature */}
+          <img src={signature} alt="Assinatura digitalizada" style={{maxWidth: 150, maxHeight: 45, objectFit: 'contain'}}/></>}{signer.length ? signer.map(l => <span key={l}>{l}</span>) : <span>Sem signatário configurado — o bloco de assinatura sairá em branco.</span>}</>}</div>
       </section>)}
       <div className={`settings-savebar ${dirty ? 'dirty' : ''}`} role="region" aria-label="Salvar configurações"><span role="status">{dirty ? 'Há alterações não salvas.' : data.updated_at ? `Última alteração: ${new Date(data.updated_at).toLocaleString('pt-BR')}${data.updated_by_name ? ` por ${data.updated_by_name}` : ''}` : 'Usando somente os valores padrão do servidor.'}</span><div className="action-row">{dirty && <button type="button" className="secondary" disabled={busy} onClick={() => { setForm(saved); setError(''); }}>Descartar alterações</button>}<button className="primary" disabled={busy || !dirty}><Save size={16}/>{busy ? 'Salvando…' : 'Salvar configurações'}</button></div></div>
       {success && <p role="status" className="notice">{success}</p>}

@@ -27,13 +27,15 @@ class SecurityMiddleware:
         entries.append(current)
         size = 0
         messages = []
+        # The signature upload (base64 JSON of an image up to 500 KB) is the only larger body accepted.
+        limit = 720 * 1024 if path == '/api/admin/settings/signature' else 256 * 1024
         while True:
             message = await receive()
             if message['type'] == 'http.disconnect':
                 return
             size += len(message.get('body', b''))
-            if size > 256 * 1024:
-                return await JSONResponse({'detail': 'Conteúdo excede 256 KiB'}, 413)(scope, receive, send)
+            if size > limit:
+                return await JSONResponse({'detail': f'Conteúdo excede {limit // 1024} KiB'}, 413)(scope, receive, send)
             messages.append(message)
             if not message.get('more_body'):
                 break

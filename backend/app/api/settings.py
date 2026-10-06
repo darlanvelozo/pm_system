@@ -1,7 +1,11 @@
+import base64
+import binascii
 import time
 from collections import defaultdict, deque
+from io import BytesIO
 from pathlib import Path
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Response
+from reportlab.lib.utils import ImageReader
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 from app import __version__
@@ -12,7 +16,7 @@ from app.db.session import get_db
 from app.models.entities import SystemSettings, now
 from app.pdf.analytical_report import LAYOUT_VERSION as REPORT_LAYOUT_VERSION
 from app.pdf.layout import PDF_LAYOUT_VERSION
-from app.schemas.settings import SettingsUpdate, TestEmail
+from app.schemas.settings import SettingsUpdate, SignatureUpload, TestEmail
 from app.services import system_settings
 from app.services.audit import audit
 from app.services.email_service import provider_status, send_message
@@ -42,6 +46,49 @@ def update_settings(data: SettingsUpdate, user=Depends(admin), db: Session = Dep
         audit(db, user.id, 'SETTINGS_UPDATED', details={'fields': changed})
         save(db)
     return {**system_settings.view(db), 'changed': changed}
+
+
+def store_signature(db, user, content, mime):
+    row = db.get(SystemSettings, 1, with_for_update=True) or SystemSettings(id=1)
+    if (row.signature_mime, row.signature_image) != (mime, content):
+        row.signature_image, row.signature_mime = content, mime
+        row.updated_at, row.updated_by = now(), user.id
+        db.add(row)
+        # Never the image itself: only the field name is audited.
+        audit(db, user.id, 'SETTINGS_UPDATED', details={'fields': ['signature_image']})
+        save(db)
+    return system_settings.view(db)
+
+
+@router.get('/settings/signature')
+def read_signature(db: Session = Depends(get_db)):
+    row = system_settings.stored(db)
+    if not row or not row.signature_mime:
+        raise HTTPException(404, 'Nenhuma assinatura cadastrada.')
+    return Response(row.signature_image, media_type=row.signature_mime, headers={'Cache-Control': 'no-store'})
+
+
+@router.put('/settings/signature')
+def upload_signature(data: SignatureUpload, user=Depends(admin), db: Session = Depends(get_db)):
+    try:
+        content = base64.b64decode(data.data_base64.split(',', 1)[-1], validate=True)
+    except (binascii.Error, ValueError):
+        raise HTTPException(422, 'Arquivo inválido: envie uma imagem PNG ou JPG.')
+    if len(content) > system_settings.SIGNATURE_MAX:
+        raise HTTPException(413, 'A assinatura deve ter no máximo 500 KB.')
+    mime = system_settings.signature_mime(content)
+    try:
+        width, height = ImageReader(BytesIO(content)).getSize() if mime else (0, 0)
+    except Exception:
+        width = height = 0
+    if not mime or width < 1 or height < 1:
+        raise HTTPException(422, 'Arquivo inválido: envie uma imagem PNG ou JPG.')
+    return store_signature(db, user, content, mime)
+
+
+@router.delete('/settings/signature')
+def remove_signature(user=Depends(admin), db: Session = Depends(get_db)):
+    return store_signature(db, user, None, None)
 
 
 def migration_state(db):

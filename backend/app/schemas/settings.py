@@ -14,6 +14,8 @@ class SettingsUpdate(BaseModel):
     signatory_name: str | None = Field(default=None, max_length=150, pattern=TEXT)
     signatory_rank: str | None = Field(default=None, max_length=100, pattern=TEXT)
     signatory_title: str | None = Field(default=None, max_length=150, pattern=TEXT)
+    footer_address: str | None = Field(default=None, max_length=200, pattern=TEXT)
+    footer_contact: str | None = Field(default=None, max_length=200, pattern=TEXT)
 
     @field_validator('*', mode='before')
     @classmethod
@@ -21,6 +23,12 @@ class SettingsUpdate(BaseModel):
         if isinstance(value, str):
             value = value.strip()
         return value or None
+
+
+class SignatureUpload(BaseModel):
+    """Base64 of a PNG/JPEG up to 500 KB (python-multipart is not a dependency)."""
+    model_config = ConfigDict(extra='forbid')
+    data_base64: str = Field(min_length=1, max_length=700_000)
 
 
 class TestEmail(BaseModel):

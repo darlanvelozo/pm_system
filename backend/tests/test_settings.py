@@ -130,7 +130,7 @@ def test_diagnostics_never_leak_secrets(client, accounts, monkeypatch):
     data = response.json()
     assert data['email']['provider'] == 'brevo' and data['email']['credentials_configured'] is True
     assert data['email']['sender_configured'] is (bool(cfg.brevo_from))
-    assert data['database']['reachable'] is True and data['database']['head'] == '20261002_settings'
+    assert data['database']['reachable'] is True and data['database']['head'] == '20261006_signature_footer'
     assert data['app']['bo_pdf_layout'] and data['frontend_url'] == cfg.frontend_url
 
 
