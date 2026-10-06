@@ -4,7 +4,7 @@ from fastapi import APIRouter, BackgroundTasks, Depends, Header, HTTPException, 
 from pydantic import ValidationError
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
-from app.auth.security import admin, operator
+from app.auth.security import admin, creator, operator
 from app.db.session import get_db
 from app.models.entities import User, now
 from app.models.analytical_report import AnalyticalReport, AnalyticalReportRevision
@@ -15,13 +15,13 @@ from app.services import analytical_reports as service
 from app.services.audit import audit
 from app.services.storage import DatabaseStorage
 from app.pdf.analytical_report import generate_report_pdf
-from app.services.system_settings import authority, effective_settings
+from app.services.system_settings import authority, effective_settings, signature
 
-router = APIRouter(prefix='/api/analytical-reports', dependencies=[Depends(operator)])
+router = APIRouter(prefix='/api/analytical-reports', dependencies=[Depends(creator)])
 
 
 @router.post('', status_code=201)
-def create(data: CreateReport, user=Depends(operator), db: Session = Depends(get_db)):
+def create(data: CreateReport, user=Depends(creator), db: Session = Depends(get_db)):
     r = AnalyticalReport(id=uuid.uuid4(), created_by=user.id, data=data.data.model_dump(mode='json'), recipient_email=data.data.recipient_email)
     db.add(r)
     audit(db, user.id, 'ANALYTICAL_REPORT_CREATED', report_id=r.id)
@@ -33,7 +33,10 @@ def create(data: CreateReport, user=Depends(operator), db: Session = Depends(get
 def listing(page: int = Query(1, ge=1), size: int = Query(20, ge=1, le=100), q: str = Query('', max_length=100),
             status: str | None = None, date_from: date | None = None, date_to: date | None = None,
             occurrence_type: str = Query('', max_length=200), city: str = Query('', max_length=200),
-            created_by: uuid.UUID | None = None, user=Depends(operator), db: Session = Depends(get_db)):
+            created_by: uuid.UUID | None = None, user=Depends(creator), db: Session = Depends(get_db)):
+    if user.role == 'BASICO' and status != 'DRAFT':
+        # Usuário básico lists only own drafts ("Meus rascunhos"), never emitted reports.
+        raise HTTPException(403, 'Este perfil acessa somente os próprios rascunhos.')
     r = AnalyticalReport
     query = select(r).join(User, r.created_by == User.id)
     if user.role != 'ADMIN':
@@ -66,22 +69,22 @@ def listing(page: int = Query(1, ge=1), size: int = Query(20, ge=1, le=100), q: 
 
 
 @router.post('/preview-pdf')
-def preview(data: ReportInput, user=Depends(operator), db: Session = Depends(get_db)):
+def preview(data: ReportInput, user=Depends(creator), db: Session = Depends(get_db)):
     unit = effective_settings(db)
     content = generate_report_pdf(data, registered_by=f'{user.name} ({user.username or user.email})', preview=True,
-                                  authority=authority(unit), unit=unit)
+                                  authority=authority(unit), unit=unit, signature=signature(db))
     audit(db, user.id, 'ANALYTICAL_REPORT_PREVIEWED')
     save(db)
     return Response(content, media_type='application/pdf', headers={'Content-Disposition': 'inline; filename="previa-relatorio.pdf"'})
 
 
 @router.get('/{report_id}')
-def detail(report_id: uuid.UUID, user=Depends(operator), db: Session = Depends(get_db)):
+def detail(report_id: uuid.UUID, user=Depends(creator), db: Session = Depends(get_db)):
     return service.present(service.accessible(db, report_id, user))
 
 
 @router.put('/{report_id}')
-def update(report_id: uuid.UUID, data: UpdateReport, user=Depends(operator), db: Session = Depends(get_db)):
+def update(report_id: uuid.UUID, data: UpdateReport, user=Depends(creator), db: Session = Depends(get_db)):
     r = service.accessible(db, report_id, user, lock=True)
     if r.status != 'DRAFT' or r.version != data.version:
         raise HTTPException(409, 'Relatório emitido ou alterado em outro dispositivo. Recarregue a versão do servidor.')
@@ -94,10 +97,10 @@ def update(report_id: uuid.UUID, data: UpdateReport, user=Depends(operator), db:
 
 @router.post('/{report_id}/emit')
 def emit(report_id: uuid.UUID, data: EmitInput, tasks: BackgroundTasks, idempotency_key: uuid.UUID = Header(),
-         user=Depends(operator), db: Session = Depends(get_db)):
+         user=Depends(creator), db: Session = Depends(get_db)):
     previous = service.retry(db, idempotency_key, user, report_id)
     if previous:
-        return service.present(previous)
+        return service.emission_view(previous, user)
     r = service.accessible(db, report_id, user, lock=True)
     if r.status != 'DRAFT' or r.version != data.version:
         raise HTTPException(409, 'Relatório emitido ou alterado em outro dispositivo.')
@@ -110,7 +113,7 @@ def emit(report_id: uuid.UUID, data: EmitInput, tasks: BackgroundTasks, idempote
     audit(db, user.id, 'ANALYTICAL_REPORT_EMITTED', report_id=r.id)
     save(db)
     tasks.add_task(service.deliver, r.id, user.id)
-    return service.present(r)
+    return service.emission_view(r, user)
 
 
 def pdf_response(db, r, user, revision):

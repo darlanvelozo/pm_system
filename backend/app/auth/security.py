@@ -10,6 +10,7 @@ from app.core.config import settings
 from app.db.session import get_db
 from app.models.entities import User
 
+ROLES = ('ADMIN', 'OPERADOR', 'BASICO')
 hasher = PasswordHasher()
 bearer = HTTPBearer(auto_error=False)
 dummy_hash = hasher.hash('dummy-unusable-password')
@@ -47,7 +48,14 @@ def admin(user: User = Depends(current_user)):
 
 
 def operator(user: User = Depends(current_user)):
-    # Only ADMIN and OPERADOR ("Usuário comum") exist; reject any unknown stored value.
+    # Consulting records: ADMIN and OPERADOR ("Usuário comum"); BASICO and unknown values are rejected.
     if user.role not in ('ADMIN', 'OPERADOR'):
+        raise HTTPException(403, 'Perfil sem permissão de acesso.')
+    return user
+
+
+def creator(user: User = Depends(current_user)):
+    # Creating, saving own drafts and emitting: also BASICO ("Usuário básico").
+    if user.role not in ROLES:
         raise HTTPException(403, 'Perfil sem permissão de acesso.')
     return user

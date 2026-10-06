@@ -4,10 +4,10 @@ from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, selectinload
 from sqlalchemy.orm.exc import StaleDataError
-from app.auth.security import admin, current_user, operator, dummy_hash, hasher, token_for, verify
+from app.auth.security import admin, creator, current_user, operator, dummy_hash, hasher, token_for, verify
 from app.db.session import get_db
 from app.models.entities import AuditLog, Bulletin, BulletinRevision, User
-from app.repositories.bulletins import accessible, assign, present
+from app.repositories.bulletins import accessible, assign, emission_view, present
 from app.schemas.bulletin import CreateBulletin, ResendInput, UpdateBulletin, RevisionInput, BulletinInput
 from app.services.protocol import emission_retry
 from app.pdf.generator import generate_pdf
@@ -133,11 +133,11 @@ def me(user=Depends(current_user)):
 
 
 @router.post('/bo', status_code=201)
-def create(data: CreateBulletin, tasks: BackgroundTasks, user=Depends(operator), db: Session = Depends(get_db), idempotency_key: uuid.UUID | None = Header(None)):
+def create(data: CreateBulletin, tasks: BackgroundTasks, user=Depends(creator), db: Session = Depends(get_db), idempotency_key: uuid.UUID | None = Header(None)):
     if data.emit:
         previous = emission_retry(db, idempotency_key, user)
         if previous:
-            return present(previous)
+            return emission_view(previous, user)
     bulletin = Bulletin(id=uuid.uuid4(), created_by=user.id)
     assign(db, bulletin, data.data)
     db.add(bulletin)
@@ -148,11 +148,14 @@ def create(data: CreateBulletin, tasks: BackgroundTasks, user=Depends(operator),
     save(db)
     if data.emit:
         tasks.add_task(deliver, bulletin.id, user.id)
-    return present(bulletin) if data.emit else present(bulletin)
+    return emission_view(bulletin, user)
 
 
 @router.get('/bo')
-def listing(page: int = Query(1, ge=1), size: int = Query(20, ge=1, le=100), status: str | None = None, search: str = Query('', max_length=100), q: str = Query('', max_length=100), date_from: date | None = None, date_to: date | None = None, occurrence_type: str = Query('', max_length=200), city: str = Query('', max_length=100), created_by: uuid.UUID | None = None, revision: int | None = Query(None, ge=0), user=Depends(operator), db: Session = Depends(get_db)):
+def listing(page: int = Query(1, ge=1), size: int = Query(20, ge=1, le=100), status: str | None = None, search: str = Query('', max_length=100), q: str = Query('', max_length=100), date_from: date | None = None, date_to: date | None = None, occurrence_type: str = Query('', max_length=200), city: str = Query('', max_length=100), created_by: uuid.UUID | None = None, revision: int | None = Query(None, ge=0), user=Depends(creator), db: Session = Depends(get_db)):
+    if user.role == 'BASICO' and status != 'DRAFT':
+        # Usuário básico lists only own drafts ("Meus rascunhos"), never emitted records.
+        raise HTTPException(403, 'Este perfil acessa somente os próprios rascunhos.')
     query = select(Bulletin).join(User, Bulletin.created_by == User.id)
     if status:
         if status not in ('DRAFT', 'ISSUED', 'CANCELLED', 'REMOVED'):
@@ -237,22 +240,22 @@ def statistics(date_from: date | None = None, date_to: date | None = None, statu
 
 
 @router.get('/bo/active-draft')
-def active_draft(user=Depends(operator), db: Session = Depends(get_db)):
+def active_draft(user=Depends(creator), db: Session = Depends(get_db)):
     b = db.scalar(select(Bulletin).where(Bulletin.created_by == user.id, Bulletin.status == 'DRAFT').order_by(Bulletin.updated_at.desc()).limit(1))
     return present(b) if b else None
 
 
 @router.get('/bo/{bulletin_id}')
-def detail(bulletin_id: uuid.UUID, user=Depends(operator), db: Session = Depends(get_db)):
+def detail(bulletin_id: uuid.UUID, user=Depends(creator), db: Session = Depends(get_db)):
     return present(accessible(db, bulletin_id, user))
 
 
 @router.put('/bo/{bulletin_id}')
-def update(bulletin_id: uuid.UUID, data: UpdateBulletin, tasks: BackgroundTasks, user=Depends(operator), db: Session = Depends(get_db), idempotency_key: uuid.UUID | None = Header(None)):
+def update(bulletin_id: uuid.UUID, data: UpdateBulletin, tasks: BackgroundTasks, user=Depends(creator), db: Session = Depends(get_db), idempotency_key: uuid.UUID | None = Header(None)):
     if data.emit:
         previous = emission_retry(db, idempotency_key, user, bulletin_id)
         if previous:
-            return present(previous)
+            return emission_view(previous, user)
     b = accessible(db, bulletin_id, user, lock=True)
     if b.status != 'DRAFT':
         raise HTTPException(409, 'Boletim emitido não pode ser alterado')
@@ -266,7 +269,7 @@ def update(bulletin_id: uuid.UUID, data: UpdateBulletin, tasks: BackgroundTasks,
     save(db)
     if data.emit:
         tasks.add_task(deliver, b.id, user.id)
-    return present(b) if data.emit else present(b)
+    return emission_view(b, user)
 
 
 @router.get('/bo/{bulletin_id}/pdf')
@@ -289,10 +292,10 @@ class EmitInput(BaseModel):
 
 @router.post('/bo/{bulletin_id}/emit')
 def issue(bulletin_id: uuid.UUID, data: EmitInput, tasks: BackgroundTasks,
-          idempotency_key: uuid.UUID = Header(), user=Depends(operator), db: Session = Depends(get_db)):
+          idempotency_key: uuid.UUID = Header(), user=Depends(creator), db: Session = Depends(get_db)):
     previous = emission_retry(db, idempotency_key, user, bulletin_id)
     if previous:
-        return present(previous)
+        return emission_view(previous, user)
     b = accessible(db, bulletin_id, user, lock=True)
     if b.status != 'DRAFT':
         raise HTTPException(409, 'Este boletim já foi emitido ou encerrado.')
@@ -307,11 +310,11 @@ def issue(bulletin_id: uuid.UUID, data: EmitInput, tasks: BackgroundTasks,
     emit(db, b, validated, user.id)
     save(db)
     tasks.add_task(deliver, b.id, user.id)
-    return present(b)
+    return emission_view(b, user)
 
 
 @router.post('/bo/preview-pdf')
-def preview(data: BulletinInput, user=Depends(operator), db: Session = Depends(get_db)):
+def preview(data: BulletinInput, user=Depends(creator), db: Session = Depends(get_db)):
     content = generate_pdf(data, registered_by=f'{user.name} ({user.username or user.email})', preview=True, unit=effective_settings(db))
     return Response(content, media_type='application/pdf', headers={'Content-Disposition': 'inline; filename="previa.pdf"', 'Cache-Control': 'no-store'})
 
@@ -369,9 +372,10 @@ def update_user(user_id: uuid.UUID, data: UserUpdate, user=Depends(admin), db: S
     target = db.get(User, user_id)
     if not target:
         raise HTTPException(404, 'Usuário não encontrado')
-    if target.id == user.id and (data.active is False or data.role == 'OPERADOR'):
+    demoted = data.role not in (None, 'ADMIN')
+    if target.id == user.id and (data.active is False or demoted):
         raise HTTPException(409, 'Não é permitido remover o próprio acesso administrativo')
-    if target.role == 'ADMIN' and target.active and (data.active is False or data.role == 'OPERADOR'):
+    if target.role == 'ADMIN' and target.active and (data.active is False or demoted):
         if db.scalar(select(func.count()).select_from(User).where(User.role == 'ADMIN', User.active.is_(True))) <= 1:
             raise HTTPException(409, 'Mantenha pelo menos um administrador ativo.')
     if data.username and db.scalar(select(User.id).where(User.id != target.id, (User.username == data.username) | (User.email == data.username))):

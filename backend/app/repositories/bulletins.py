@@ -13,7 +13,16 @@ def accessible(db, bulletin_id, user, lock=False):
     bulletin = db.scalar(query)
     if not bulletin:
         raise HTTPException(404, 'Boletim não encontrado')
+    if user.role == 'BASICO' and bulletin.status != 'DRAFT':
+        raise HTTPException(403, 'Este perfil acessa somente os próprios rascunhos.')
     return bulletin
+
+
+def emission_view(b, user):
+    # BASICO only gets a minimal receipt after emission: no data, no PDF.
+    if user.role == 'BASICO' and b.status != 'DRAFT':
+        return {'id': str(b.id), 'bo_number': b.bo_number, 'status': b.status, 'current_revision': b.current_revision, 'pdf_generated_at': b.pdf_generated_at}
+    return present(b)
 
 
 def assign(db, bulletin, data):

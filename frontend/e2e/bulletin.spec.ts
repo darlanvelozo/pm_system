@@ -4,14 +4,14 @@ const admin = { username: 'e2e@example.com', password: 'Fictional-e2e-password-2
 const stamp = Date.now();
 const operator = {username: `joao.teste.${stamp}`, password: 'Fictional-e2e-password-2026'};
 
-test('admin cria Usuário comum; somente dois perfis; sem acesso administrativo',async({page})=>{
+test('admin cria Usuário comum; três perfis; sem acesso administrativo',async({page})=>{
   await page.setViewportSize({width:390,height:844});
   await login(page);
   await page.getByRole('button',{name:'Menu',exact:true}).click();
   await page.getByRole('button',{name:'Usuários',exact:true}).click();
   const common={username:`comum.${stamp}`,password:'Fictional-common-2026'};
   const role=page.getByRole('combobox',{name:'Perfil',exact:true});
-  expect(await role.locator('option').allTextContents()).toEqual(['Usuário comum','Administrador']);
+  expect(await role.locator('option').allTextContents()).toEqual(['Usuário comum','Usuário básico','Administrador']);
   await page.getByLabel('Nome completo',{exact:true}).fill('Usuário Comum Fictício');
   await page.getByLabel('Nome de usuário (login)').fill(common.username);
   await page.getByLabel(/Senha inicial/).fill(common.password);
@@ -30,6 +30,26 @@ test('admin cria Usuário comum; somente dois perfis; sem acesso administrativo'
     const r=await page.request.get(`http://localhost:8000${path}`,{headers:{Authorization:`Bearer ${session.access_token}`}});expect(r.status()).toBe(403);
   }
   expect((await page.request.get('http://localhost:8000/api/bo',{headers:{Authorization:`Bearer ${session.access_token}`}})).status()).toBe(200);
+});
+
+test('Usuário básico: início restrito, sem listas nem PDFs',async({page})=>{
+  await login(page);
+  await page.getByRole('button',{name:'Usuários',exact:true}).click();
+  const basic={username:`basico.${stamp}`,password:'Fictional-basic-2026'};
+  await page.getByLabel('Nome completo',{exact:true}).fill('Usuário Básico Fictício');
+  await page.getByLabel('Nome de usuário (login)').fill(basic.username);
+  await page.getByLabel(/Senha inicial/).fill(basic.password);
+  await page.getByRole('combobox',{name:'Perfil',exact:true}).selectOption('BASICO');
+  await page.getByRole('button',{name:'Criar usuário',exact:true}).click();
+  await expect(page.locator('td[data-label="Perfil"]',{hasText:'Usuário básico'}).first()).toBeVisible();
+  await page.getByRole('button',{name:'Sair',exact:true}).click();
+  const session=await login(page,basic,'Registrar documentos');
+  expect(session.user.role).toBe('BASICO');
+  await expect(page.getByRole('heading',{name:'Meus rascunhos'})).toBeVisible();
+  for(const name of ['Painel de boletins','Relatórios Analíticos','Usuários','Configurações'])await expect(page.getByRole('button',{name,exact:true})).toHaveCount(0);
+  for(const path of ['/api/bo','/api/analytical-reports','/api/operational-options','/api/admin/users']){
+    const r=await page.request.get(`http://localhost:8000${path}`,{headers:{Authorization:`Bearer ${session.access_token}`}});expect(r.status()).toBe(403);
+  }
 });
 
 test('relatório analítico: prévia, emissão, revisão, PDF, reenvio, cancelamento e remoção',async({page})=>{
@@ -73,7 +93,7 @@ test('relatório analítico: prévia, emissão, revisão, PDF, reenvio, cancelam
   for(const width of [320,360,375,390,412,768,1280]){await page.setViewportSize({width,height:844});const layout=await page.evaluate(()=>({width:innerWidth,scroll:document.documentElement.scrollWidth,overflow:[...document.querySelectorAll('main *')].filter(e=>e.getBoundingClientRect().right>innerWidth+1).slice(0,8).map(e=>({tag:e.tagName,className:e.className,right:e.getBoundingClientRect().right}))}));expect(layout.scroll,JSON.stringify(layout)).toBeLessThanOrEqual(width+1);}
 });
 test.setTimeout(180000);
-async function login(page: Page, account = admin) {
+async function login(page: Page, account = admin, heading = 'Painel de boletins') {
   await page.goto('/');
   await page.getByLabel('Usuário', {exact: true}).fill(account.username);
   await page.getByLabel('Senha', {exact: true}).fill(account.password);
@@ -90,7 +110,7 @@ async function login(page: Page, account = admin) {
     response = await submit();
   }
   expect(response.status()).toBe(200);
-  await expect(page.getByRole('heading', {name:'Painel de boletins'})).toBeVisible();
+  await expect(page.getByRole('heading', {name:heading})).toBeVisible();
   return response.json();
 }
 async function forward(page: Page, count = 1) {

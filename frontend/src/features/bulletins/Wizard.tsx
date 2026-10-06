@@ -25,13 +25,14 @@ export function Wizard({ user, token, existing, onComplete, onBack }: { user: Us
   const attemptKey = `bo24:emission:${user.id}:${existing?.id || 'new'}`;
   const emissionKey = useRef<string | null>(null);
   useEffect(() => {
-    api<typeof operational>('/api/operational-options', token).then(setOperational).catch(() => {});
+    // Usuário básico has no access to suggestions taken from previous records.
+    if (user.role !== 'BASICO') api<typeof operational>('/api/operational-options', token).then(setOperational).catch(() => {});
     const offline = () => setNetwork('Sem conexão — trabalhando com rascunho local');
     const online = () => setNetwork('Conexão restabelecida');
     if(!navigator.onLine) offline();
     window.addEventListener('offline',offline); window.addEventListener('online',online);
     return () => {window.removeEventListener('offline',offline); window.removeEventListener('online',online);};
-  }, [token]);
+  }, [token, user.role]);
   const [focusPath, setFocusPath] = useState('');
   const [reason, setReason] = useState('');
   const [confirmRevision, setConfirmRevision] = useState(false);
@@ -80,7 +81,8 @@ export function Wizard({ user, token, existing, onComplete, onBack }: { user: Us
         method: revising || !record ? 'POST' : 'PUT',
         headers: emit && !revising ? {'Idempotency-Key':emissionKey.current!} : {},
         body: JSON.stringify({data, ...(revising ? {reason, version: record.version} : {emit, ...(record ? {version: record.version} : {})})})});
-      setRecord(result); form.reset(normalizeData(result.data)); setConfirmRevision(false); setPending([]);
+      // Usuário básico receives only a receipt (no data) after emission.
+      if (user.role !== 'BASICO' || !emit) { setRecord(result); form.reset(normalizeData(result.data)); } setConfirmRevision(false); setPending([]);
       if (emit) { localStorage.removeItem(attemptKey); localStorage.removeItem(draftKey(user.id, record?.id)); localStorage.removeItem(draftKey(user.id)); onComplete(result); }
       else {
         localStorage.setItem(draftKey(user.id,result.id),JSON.stringify({version:result.version,savedAt:Date.now(),data:result.data}));
@@ -91,7 +93,7 @@ export function Wizard({ user, token, existing, onComplete, onBack }: { user: Us
     finally { lock.current = false; setBusy(false); }
   }
   const sections = [<OccurrenceHeaderForm key="header" suggestions={operational?.occurrence_types} />, <LocationForm key="location" />, <InvolvedForm key={`people-${focusPath}`} initialIndex={focusPath.startsWith('people.') ? Number(focusPath.split('.')[1]) : 0} />, <HistoryForm key="history" />, <SeizedMaterialForm key="material" />, <PoliceTeamForm key="team" />, <DeliveryForm key="delivery" />, <ReviewStep key="review" data={form.getValues()} />];
-  return <div><div className="page-heading"><div><button className="back-link" onClick={onBack}><ArrowLeft size={15} /> Boletins</button><h1>{record?.status === 'ISSUED' ? 'Corrigir boletim emitido' : record ? 'Editar rascunho' : 'Novo boletim'}</h1><p>Preencha as etapas para registrar uma ocorrência.</p></div><span className="draft-status"><Save size={14} />{saved || draftStatus || 'Preenchimento seguro'}</span></div>
+  return <div><div className="page-heading"><div><button className="back-link" onClick={onBack}><ArrowLeft size={15} /> {user.role === 'BASICO' ? 'Início' : 'Boletins'}</button><h1>{record?.status === 'ISSUED' ? 'Corrigir boletim emitido' : record ? 'Editar rascunho' : 'Novo boletim'}</h1><p>Preencha as etapas para registrar uma ocorrência.</p></div><span className="draft-status"><Save size={14} />{saved || draftStatus || 'Preenchimento seguro'}</span></div>
     <div className="mobile-progress">Etapa {step+1} de 8 · {steps[step]}<progress max={8} value={step+1}/></div><ol className="stepper">{steps.map((title, index) => <li key={title} className={index === step ? 'active' : index < step ? 'done' : ''}><button type="button" disabled={index > step} onClick={() => setStep(index)} aria-current={index === step ? 'step' : undefined}><span>{index < step ? <Check size={15} /> : index+1}</span>{title}</button></li>)}</ol>
     <FormProvider {...form}><form className="card wizard-card" onSubmit={e => e.preventDefault()}><div className="card-heading"><div><small>ETAPA {step+1} DE 8</small><h2>{steps[step]}</h2></div><span className="muted">* Campos obrigatórios</span></div>{error && <div role="alert" className="error-box">{error}</div>}{pending.length > 0 && <div className="notice"><h3>Pendências</h3>{pending.map(p => <button className="text-button" type="button" key={`${p.path}:${p.message}`} onClick={() => { setFocusPath(p.path); const root = p.path.split('.')[0]; const target = groups.findIndex(g => g.some(field => field === root)); setStep(target >= 0 ? target : 0); setTimeout(() => document.getElementById(p.path.replaceAll('.', '-'))?.focus(), 100); }}>{p.path.startsWith('people.') ? `Envolvido ${positionLabel(Number(p.path.split('.')[1]))} - ` : ''}{labels[p.path.split('.').at(-1)!] || p.path}: {p.message}</button>)}</div>}{conflict && <button type="button" className="secondary" onClick={reloadServer}>Recarregar versão do servidor</button>}{network && <p role="status">{network} {navigator.onLine && record?.status !== 'ISSUED' && <button type="button" onClick={() => persist(false)}>Sincronizar rascunho</button>}</p>}{step === 5 && !!operational?.team.length && <button type="button" className="secondary" onClick={() => form.setValue('team',operational.team,{shouldDirty:true})}>Reutilizar meu último efetivo (substitui as equipes atuais)</button>}{step === 6 && operational?.delivery.unit && <button type="button" className="secondary" onClick={() => form.setValue('delivery.unit',operational.delivery.unit,{shouldDirty:true})}>Reutilizar minha última unidade de entrega: {operational.delivery.unit}</button>}{sections[step]}{step === 7 && <button type="button" className="secondary" disabled={busy} onClick={preview}>Visualizar prévia do PDF</button>}<div className="wizard-actions"><button type="button" className="secondary" onClick={() => step ? setStep(step-1) : onBack()} disabled={busy}><ArrowLeft size={16} />{step ? 'Voltar e corrigir' : 'Voltar'}</button>{record?.status !== 'ISSUED' && <button type="button" className="text-button" onClick={() => persist(false)} disabled={busy}>Salvar no servidor</button>}{step < 7 ? <button type="button" className="primary" onClick={next}>Continuar <ArrowRight size={16} /></button> : <button type="button" className="primary" onClick={() => record?.status === 'ISSUED' ? setConfirmRevision(true) : persist(true)} disabled={busy}>{busy ? 'Gerando boletim…' : record?.status === 'ISSUED' ? 'Confirmar e regenerar PDF' : 'Confirmar e gerar boletim'}</button>}</div></form></FormProvider>
     {previewUrl && <PdfPreview url={previewUrl} filename="previa-boletim.pdf" onClose={() => setPreviewUrl('')}/>}

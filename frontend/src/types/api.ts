@@ -1,13 +1,13 @@
 import type { BulletinData, BulletinType } from '@/schemas/bulletin';
-export type User = { id: string; name: string; username?: string; email: string | null; role: 'ADMIN' | 'OPERADOR'; active: boolean };
+export type User = { id: string; name: string; username?: string; email: string | null; role: 'ADMIN' | 'OPERADOR' | 'BASICO'; active: boolean };
 export type EmailStatus = 'PENDING' | 'SENT' | 'FAILED' | 'NOT_SENT';
 export type Bulletin = { id: string; bo_number: string | null; bulletin_type: BulletinType; recipient_email: string; created_by: string; created_by_name?: string; created_by_username?: string; current_revision?: number; edited_at?: string; edit_reason?: string; edited_by_name?: string; edited_by_username?: string; cancelled_by_name?: string; cancelled_by_username?: string; deleted_at?: string; deletion_reason?: string; deleted_by_name?: string; deleted_by_username?: string; cancellation_reason?: string; cancelled_at?: string; status: 'DRAFT' | 'ISSUED' | 'CANCELLED' | 'REMOVED'; version: number; data: BulletinData; pdf_generated_at: string | null; recipient_email_status: EmailStatus; battalion_email_status: EmailStatus };
 export type BulletinSummary = Omit<Bulletin, 'data' | 'version' | 'recipient_email'> & { occurrence_type: string; occurrence_date: string; occurrence_summary?: string; city?:string; involved_count:number; complete_count:number; pending_count:number; updated_at:string; draft_step?:number };
 export type BulletinList = { items: BulletinSummary[]; page: number; size: number; total: number };
-// OPERADOR is the stored value for the "Usuário comum" profile.
-export const roleLabels: Record<User['role'], string> = {ADMIN: 'Administrador', OPERADOR: 'Usuário comum'};
+// OPERADOR is the stored value for "Usuário comum"; BASICO only creates and emits (no consultation).
+export const roleLabels: Record<User['role'], string> = {ADMIN: 'Administrador', OPERADOR: 'Usuário comum', BASICO: 'Usuário básico'};
 export const roleLabel = (role: string) => roleLabels[role as User['role']] || role;
-export const settingFields = ['unit_name', 'unit_short_name', 'unit_city', 'battalion_email', 'reply_to_email', 'signatory_rank', 'signatory_name', 'signatory_title'] as const;
+export const settingFields = ['unit_name', 'unit_short_name', 'unit_city', 'footer_address', 'footer_contact', 'battalion_email', 'reply_to_email', 'signatory_rank', 'signatory_name', 'signatory_title'] as const;
 export type SettingField = typeof settingFields[number];
-export type SystemSettings = { values: Record<SettingField, string | null>; defaults: Record<SettingField, string>; effective: Record<SettingField, string>; updated_at: string | null; updated_by_name: string | null; changed?: SettingField[] };
+export type SystemSettings = { values: Record<SettingField, string | null>; defaults: Record<SettingField, string>; effective: Record<SettingField, string>; has_signature: boolean; signature_mime: string | null; updated_at: string | null; updated_by_name: string | null; changed?: SettingField[] };
 export type Diagnostics = { email: { provider: string; provider_label: string; configured: boolean; sender_configured: boolean; credentials_configured: boolean; battalion_email: string; reply_to: string | null }; app: { version: string; bo_pdf_layout: string; report_pdf_layout: string }; database: { reachable: boolean; dialect: string; revision: string | null; head: string | null; up_to_date: boolean }; environment: string; frontend_url: string };

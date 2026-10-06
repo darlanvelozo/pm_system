@@ -13,7 +13,7 @@ from app.services.audit import audit
 from app.services.email_service import send_document_pdf
 from app.services.email_summary import safe_metadata
 from app.services.storage import DatabaseStorage
-from app.services.system_settings import authority as authority_of, effective_settings, stored_reply_to
+from app.services.system_settings import authority as authority_of, effective_settings, signature as signature_of, signature_digest, stored_reply_to
 
 
 def next_report_number(db, instant=None):
@@ -43,7 +43,16 @@ def accessible(db, report_id, user, lock=False):
     r = db.scalar(query.with_for_update() if lock else query)
     if not r:
         raise HTTPException(404, 'Relatório não encontrado.')
+    if user.role == 'BASICO' and r.status != 'DRAFT':
+        raise HTTPException(403, 'Este perfil acessa somente os próprios rascunhos.')
     return r
+
+
+def emission_view(r, user):
+    # BASICO only gets a minimal receipt after emission: no data, no PDF.
+    if user.role == 'BASICO' and r.status != 'DRAFT':
+        return {key: getattr(r, key) for key in ('id', 'report_number', 'status', 'current_revision', 'pdf_generated_at')}
+    return present(r)
 
 
 def present(r, full=True):
@@ -67,15 +76,15 @@ def emit(db, report, data, actor, reason='Emissão inicial'):
         report.registered_by_username_snapshot = creator.username or creator.email
     version = report.current_revision + 1
     unit = effective_settings(db)
-    authority = authority_of(unit)
+    authority, signature = authority_of(unit), signature_of(db)
     content = generate_report_pdf(data, report.report_number, version,
-        f'{report.registered_by_name_snapshot} ({report.registered_by_username_snapshot})', authority, unit=unit)
+        f'{report.registered_by_name_snapshot} ({report.registered_by_username_snapshot})', authority, unit=unit, signature=signature)
     key = f'analytical-reports/{report.id}/v{version}.pdf'
     DatabaseStorage(db).put(key, content)
     db.add(AnalyticalReportRevision(report_id=report.id, version=version, created_by=actor.id,
         actor_name_snapshot=actor.name, actor_username_snapshot=actor.username or actor.email, reason=reason,
         pdf_storage_key=key, pdf_sha256=hashlib.sha256(content).hexdigest(), pdf_layout_version=LAYOUT_VERSION,
-        data={**data.model_dump(mode='json'), 'signatory': authority}))
+        data={**data.model_dump(mode='json'), 'signatory': {**authority, 'signature_sha256': signature_digest(signature)}}))
     report.data = data.model_dump(mode='json')
     report.recipient_email = str(data.recipient_email)
     report.current_revision, report.pdf_storage_key, report.pdf_generated_at = version, key, now()
